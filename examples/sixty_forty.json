@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "60/40 Stocks & Bonds",
+  "currency": "EUR",
+  "assets": [
+    {
+      "ticker": "VWCE.DE",
+      "name": "Vanguard FTSE All-World UCITS ETF",
+      "weight": 60.0
+    },
+    {
+      "ticker": "AGGH.DE",
+      "name": "iShares Core Global Aggregate Bond UCITS ETF",
+      "weight": 40.0
+    }
+  ],
+  "start": "2020-01-01",
+  "initial": 1000.0,
+  "monthly": 100.0,
+  "rebalance": "Yearly",
+  "is_example": true
+}

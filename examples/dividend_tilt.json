@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "Dividend Focus",
+  "currency": "EUR",
+  "assets": [
+    {
+      "ticker": "VHYL.DE",
+      "name": "Vanguard FTSE All-World High Dividend Yield UCITS ETF",
+      "weight": 50.0
+    },
+    {
+      "ticker": "FUSD.DE",
+      "name": "Fidelity US Quality Income UCITS ETF",
+      "weight": 50.0
+    }
+  ],
+  "start": "2020-01-01",
+  "initial": 1000.0,
+  "monthly": 100.0,
+  "rebalance": "Never",
+  "is_example": true
+}

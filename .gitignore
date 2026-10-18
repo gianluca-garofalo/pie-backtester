@@ -1,1 +1,19 @@
-/.venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Streamlit & Local Data
+.streamlit/secrets.toml
+saved_pies.json
+streamlit.log
+
+# Verification & Tests
+/home/jules/verification/
+.pytest_cache/
+.coverage

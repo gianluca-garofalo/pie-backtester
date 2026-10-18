@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Tech Leaders",
+  "currency": "USD",
+  "assets": [
+    {
+      "ticker": "IITU.DE",
+      "name": "iShares S&P 500 Information Technology Sector UCITS ETF",
+      "weight": 50.0
+    },
+    {
+      "ticker": "AAPL",
+      "name": "Apple Inc.",
+      "weight": 25.0
+    },
+    {
+      "ticker": "MSFT",
+      "name": "Microsoft Corporation",
+      "weight": 25.0
+    }
+  ],
+  "start": "2020-01-01",
+  "initial": 1000.0,
+  "monthly": 100.0,
+  "rebalance": "Quarterly",
+  "is_example": true
+}

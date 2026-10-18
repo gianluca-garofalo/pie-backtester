@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "name": "All-World ETF",
+  "currency": "EUR",
+  "assets": [
+    {
+      "ticker": "VWCE.DE",
+      "name": "Vanguard FTSE All-World UCITS ETF (USD) Accumulating",
+      "weight": 100.0
+    }
+  ],
+  "start": "2020-01-01",
+  "initial": 1000.0,
+  "monthly": 100.0,
+  "rebalance": "Never",
+  "is_example": true
+}
