@@ -11,6 +11,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import engine
+import storage
+import sharing
+import auth
 
 st.set_page_config(page_title="Pie backtester", page_icon="🥧", layout="wide")
 
@@ -25,6 +28,18 @@ if "editor_version" not in st.session_state:
     st.session_state.editor_version = 0
 if "fix_report" not in st.session_state:
     st.session_state.fix_report = None
+
+# Check for share link in query params on initial load
+if "loaded_query_pie" not in st.session_state:
+    st.session_state.loaded_query_pie = True
+    qp_pie = st.query_params.get("pie")
+    if qp_pie:
+        decoded = sharing.decode_pie_from_query_param(qp_pie)
+        if decoded:
+            st.session_state.pie = [
+                {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
+                for a in decoded.get("assets", [])
+            ]
 
 
 def pie_changed():
@@ -89,8 +104,22 @@ def fmt_money(x, ccy):
     return f"{x:,.2f} {ccy}"
 
 
+# Determine active storage backend
+try:
+    supabase_url = st.secrets.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url")
+    supabase_key = st.secrets.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key")
+except Exception:
+    supabase_url = None
+    supabase_key = None
+active_storage = storage.get_storage(url=supabase_url, key=supabase_key)
+
 # ---------------- sidebar: settings ----------------
 with st.sidebar:
+    st.header("Account & Storage")
+    current_user = auth.render_auth_ui()
+    user_id = current_user.get("id") if current_user else None
+
+    st.divider()
     st.header("Settings")
     base_ccy = st.selectbox("Pie currency", ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"])
     start = st.date_input("Start date", value=date(2020, 1, 1), max_value=date.today())
@@ -106,21 +135,125 @@ with st.sidebar:
                                    "'Cash' keeps the full period and buys that ETF once it lists.")
 
     st.divider()
-    st.subheader("Save or load a pie")
-    pie_json = json.dumps({"pie": st.session_state.pie, "currency": base_ccy}, indent=2)
+    st.subheader("Example pies")
+    examples = storage.list_examples()
+    if examples:
+        ex_names = ["-- Select an example pie --"] + [ex["name"] for ex in examples]
+        selected_ex_idx = st.selectbox("Load example pie", range(len(ex_names)),
+                                       format_func=lambda i: ex_names[i], label_visibility="collapsed")
+        if selected_ex_idx > 0 and st.button("Load example", width="stretch"):
+            ex_pie = examples[selected_ex_idx - 1]
+            st.session_state.pie = [
+                {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
+                for a in ex_pie["assets"]
+            ]
+            st.session_state.fix_report = None
+            pie_changed()
+            st.rerun()
+
+    st.divider()
+    st.subheader("My saved pies")
+    if st.session_state.pie:
+        pie_name_input = st.text_input("Pie name", value="My Pie", key="save_pie_name_input")
+        is_pub = st.checkbox("Make public", value=False, key="save_pie_pub_cb")
+        if st.button("Save pie to account/storage", type="primary", width="stretch"):
+            save_payload = {
+                "version": 1,
+                "name": pie_name_input,
+                "currency": base_ccy,
+                "is_public": is_pub,
+                "assets": [
+                    {"ticker": a["Ticker"], "weight": float(a["Weight %"]), "name": a.get("Name", "")}
+                    for a in st.session_state.pie
+                ]
+            }
+            try:
+                saved = active_storage.save_pie(save_payload, user_id=user_id)
+                st.success(f"Saved pie '{saved['name']}'!")
+                st.rerun()
+            except Exception as ex:
+                st.error(f"Failed to save pie: {ex}")
+
+    saved_pies = active_storage.list_pies(user_id=user_id)
+    if saved_pies:
+        sp_names = [f"{p['name']} ({len(p['assets'])} assets)" for p in saved_pies]
+        sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i], label_visibility="collapsed")
+        c_load, c_del = st.columns(2)
+        if c_load.button("Load saved pie", width="stretch"):
+            target_sp = saved_pies[sel_sp_idx]
+            st.session_state.pie = [
+                {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
+                for a in target_sp["assets"]
+            ]
+            st.session_state.fix_report = None
+            pie_changed()
+            st.rerun()
+        if c_del.button("Delete pie", width="stretch"):
+            target_sp = saved_pies[sel_sp_idx]
+            active_storage.delete_pie(target_sp["id"], user_id=user_id)
+            st.success("Pie deleted")
+            st.rerun()
+
+    st.divider()
+    st.subheader("Export / Import JSON")
+    if st.session_state.pie:
+        pie_data_raw = {
+            "version": 1,
+            "name": "My Pie",
+            "currency": base_ccy,
+            "assets": [
+                {"ticker": a["Ticker"], "weight": float(a["Weight %"]), "name": a.get("Name", "")}
+                for a in st.session_state.pie
+            ]
+        }
+        try:
+            norm_export = storage.normalize_pie(pie_data_raw)
+            pie_json = json.dumps(norm_export, indent=2)
+        except Exception:
+            pie_json = json.dumps({"pie": st.session_state.pie, "currency": base_ccy}, indent=2)
+    else:
+        pie_json = ""
+
     st.download_button("Download pie (.json)", pie_json, file_name="my_pie.json", mime="application/json",
                        disabled=not st.session_state.pie)
     uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
     if uploaded is not None and st.button("Load this pie"):
-        st.session_state.pie = json.load(uploaded).get("pie", [])
-        st.session_state.fix_report = None
-        pie_changed()
-        st.rerun()
+        try:
+            raw_content = json.load(uploaded)
+            is_valid, err = storage.validate_pie(raw_content)
+            if not is_valid:
+                st.error(f"Invalid pie file: {err}")
+            else:
+                norm = storage.normalize_pie(raw_content)
+                st.session_state.pie = [
+                    {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
+                    for a in norm["assets"]
+                ]
+                st.session_state.fix_report = None
+                pie_changed()
+                st.rerun()
+        except Exception as e:
+            st.error(f"Could not load pie file: {e}")
+
+    if st.session_state.pie:
+        st.divider()
+        st.subheader("Share pie link")
+        try:
+            encoded_param = sharing.encode_pie_to_query_param(pie_data_raw)
+            if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
+                st.warning("Pie configuration is too large for a URL share link. Please use 'Download pie (.json)' instead.")
+            else:
+                share_url = f"?pie={encoded_param}"
+                st.text_input("Share URL query", value=share_url, readonly=True, label_visibility="collapsed")
+                st.caption("Copy this URL or share parameter to reproduce your pie.")
+        except Exception as e:
+            st.caption(f"Cannot generate share link: {e}")
 
 # ---------------- main: build the pie ----------------
 st.title("🥧 Pie backtester")
 st.caption("Pick ETFs and stocks, set their weights, and see how the pie would have grown. "
-           "Prices come from Yahoo Finance and include reinvested dividends.")
+           "Prices come from Yahoo Finance and include reinvested dividends. "
+           "**Not financial advice.** Past performance is not indicative of future returns.")
 
 left, right = st.columns([3, 2], gap="large")
 
@@ -312,4 +445,4 @@ if R:
         st.download_button("Download daily values (.csv)", csv, "pie_history.csv", "text/csv")
 
     st.caption("Assumes fractional shares, no fees or taxes, and dividends reinvested. "
-               "Past performance doesn't predict future returns.")
+               "Disclaimer: Not financial advice. Past performance doesn't predict future returns.")

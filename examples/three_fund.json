@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "name": "Three-Fund Portfolio",
+  "currency": "EUR",
+  "assets": [
+    {
+      "ticker": "SWRD.L",
+      "name": "SPDR MSCI World UCITS ETF",
+      "weight": 60.0
+    },
+    {
+      "ticker": "EIMI.L",
+      "name": "iShares Core MSCI Emerging Markets IMI UCITS ETF",
+      "weight": 20.0
+    },
+    {
+      "ticker": "AGGH.DE",
+      "name": "iShares Core Global Aggregate Bond UCITS ETF",
+      "weight": 20.0
+    }
+  ],
+  "start": "2020-01-01",
+  "initial": 1000.0,
+  "monthly": 100.0,
+  "rebalance": "Yearly",
+  "is_example": true
+}

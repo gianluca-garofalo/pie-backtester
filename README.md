@@ -2,30 +2,58 @@
 
 Build a Trading 212-style pie of ETFs and stocks, pick a start date, and see how it would have developed until today (or any end date).
 
-## Run it
+## Features
+
+- **Curated Example Pies**: Quickly load popular strategies like All-World ETF, 60/40 Stocks & Bonds, Three-Fund Portfolio, Dividend Focus, and Tech Leaders.
+- **Share Links**: Share your pie setup instantly using compressed, URL-safe query parameters (`?pie=...`).
+- **Save & Load**: Persist your custom pies locally or connect Supabase for cloud database storage.
+- **Google Authentication**: Optional Google login via native Streamlit auth (`st.login("google")`).
+- **Dividends & Rebalancing**: Daily price data adjusted for splits and dividends, with custom rebalancing intervals (Monthly, Quarterly, Yearly, or Never).
+
+## Quick Start
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Your browser opens at http://localhost:8501.
+Open http://localhost:8501 in your browser.
 
-## How to use
+## How to Use
 
-1. Search by ISIN, name or ticker (e.g. `IE00BK5BQT80`, `Vanguard FTSE All-World`, `AAPL`) and add assets.
-2. Set the weights in the table (they must add up to 100%), or use "Split evenly".
-3. In the sidebar, choose currency, start/end date, initial amount, monthly deposit and rebalancing.
-4. Click "Run backtest".
+1. **Load or Create a Pie**: Choose an example pie from the sidebar dropdown, upload a `.json` file, or search by ISIN, ticker, or name (e.g. `VWCE.DE`, `AGGH.DE`, `AAPL`) to add assets manually.
+2. **Set Target Weights**: Ensure asset weights sum to 100% (or use the "Split evenly" button).
+3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
+4. **Run Backtest**: Click "Run backtest" to view performance charts, drawdowns, CAGR, and holdings breakdown.
+5. **Share or Save**: Copy the share link from the sidebar or save the pie to your account/local storage.
 
-## Tips
+## Setup Supabase & Authentication (Optional)
 
-- European ETFs are listed on several exchanges. Use the listing you actually buy, e.g. `VWCE.DE` (Xetra, EUR), `IWDA.AS` (Amsterdam, EUR), `CSPX.L` (London, USD).
-- Prices are adjusted for dividends and splits, so accumulating and distributing ETFs are compared fairly.
-- Assets in other currencies are converted with daily FX rates into the pie currency.
-- If an asset launched after your start date, the simulation starts when all assets have data.
-- Save a pie as JSON from the sidebar and load it again later.
+To enable cloud storage and Google authentication, create `.streamlit/secrets.toml`:
 
-## Assumptions
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_KEY = "your-supabase-anon-key"
 
-Fractional shares, no fees or taxes, monthly deposits on the first trading day of each month split by target weights (like Trading 212 auto-invest), rebalancing only if you turn it on.
+[auth]
+redirect_uri = "http://localhost:8501/oauth2callback"
+cookie_secret = "your-random-cookie-secret-key"
+
+[auth.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+```
+
+Then run `schema.sql` in your Supabase SQL Editor to set up the `pies` table and Row Level Security (RLS) policies.
+
+If secrets are not provided, the app runs out-of-the-box in local storage mode using `saved_pies.json`.
+
+## Run Tests
+
+```bash
+python3 -m pytest
+```
+
+## Disclaimer
+
+Not financial advice. Past performance is not indicative of future returns. This tool is for backtesting and educational purposes only.
