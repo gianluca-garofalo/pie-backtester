@@ -3,3 +3,4 @@ yfinance>=0.2.60
 plotly>=5.20
 pandas>=2.0
 numpy
+authlib>=1.3.2
