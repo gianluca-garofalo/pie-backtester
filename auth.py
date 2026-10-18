@@ -5,10 +5,17 @@ from __future__ import annotations
 import streamlit as st
 
 
-def is_auth_configured() -> bool:
-    """Check if auth secrets are present in st.secrets."""
+def is_auth_configured(provider: str = "google") -> bool:
+    """Check if all required auth secrets for provider are present in st.secrets."""
     try:
-        return "auth" in st.secrets and "google" in st.secrets.get("auth", {})
+        auth_sec = st.secrets.get("auth", {})
+        if not auth_sec or "redirect_uri" not in auth_sec or "cookie_secret" not in auth_sec:
+            return False
+        provider_sec = auth_sec.get(provider, {})
+        if not provider_sec:
+            return False
+        required_keys = ["client_id", "client_secret", "server_metadata_url"]
+        return all(key in provider_sec for key in required_keys)
     except Exception:
         return False
 
@@ -55,8 +62,9 @@ def render_auth_ui() -> dict[str, str] | None:
                 st.session_state["auth_error"] = "Streamlit native auth is not supported in this version."
 
         if st.session_state.get("auth_error"):
-            st.warning("Google Auth is not configured in `.streamlit/secrets.toml`.\n\n"
-                       "Add `[auth.google]` secrets to enable Google login (see README).")
+            st.warning(f"Google Auth error: {st.session_state['auth_error']}\n\n"
+                       "Please check `.streamlit/secrets.toml` for `redirect_uri`, `cookie_secret`, "
+                       "and `[auth.google]` settings (see README).")
             if st.button("Use Local Guest Account", key="guest_login_btn", width="stretch"):
                 st.session_state["custom_user"] = {
                     "email": "guest@local.dev",

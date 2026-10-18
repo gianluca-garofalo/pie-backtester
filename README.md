@@ -42,6 +42,7 @@ cookie_secret = "your-random-cookie-secret-key"
 [auth.google]
 client_id = "your-google-client-id"
 client_secret = "your-google-client-secret"
+server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
 ```
 
 Then run `schema.sql` in your Supabase SQL Editor to set up the `pies` table and Row Level Security (RLS) policies.
