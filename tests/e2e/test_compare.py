@@ -28,7 +28,7 @@ def test_reloading_the_same_pie_does_not_duplicate_it(app):
 
 def test_snapshot_of_your_own_pie(app):
     app.load_example("Tech Leaders")
-    app.click("Duplicate")
+    app.click("Compare a copy")
     rows = comparison_rows(app)
     assert [r[0] for r in rows] == ["Tech Leaders (editing)", "Tech Leaders"]
     assert rows[0][1:] == rows[1][1:]  # an untouched copy performs exactly like your pie

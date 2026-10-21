@@ -464,7 +464,7 @@ with left:
             st.session_state.pie, st.session_state.fix_report = [], None
             pie_changed()
             st.rerun()
-        if c4.button("Duplicate", width="stretch", disabled=abs(total_w - 100) > 0.01,
+        if c4.button("Compare a copy", width="stretch", disabled=abs(total_w - 100) > 0.01,
                      help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
             add_to_comparison({"name": st.session_state.save_pie_name_input, "assets": [
                 {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})

@@ -26,7 +26,7 @@ Open http://localhost:8501 in your browser.
 2. **Set Target Weights**: Ensure asset weights sum to 100% (or use the "Split evenly" button).
 3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
 4. **See the Results**: Once the weights add up to 100%, the backtest runs by itself: performance charts, drawdowns, CAGR and the holdings breakdown.
-5. **Compare**: Load another pie, and the previous one stays on the charts. Use "Duplicate" to compare versions of your own pie, and ✕ to remove a pie.
+5. **Compare**: Load another pie, and the previous one stays on the charts. Use "Compare a copy" to compare versions of your own pie, and ✕ to remove a pie.
 6. **Share or Save**: Copy the share link from the sidebar or save the pie to your account/local storage.
 
 ## Setup Supabase & Authentication (Optional)
