@@ -7,23 +7,23 @@ def comparison_rows(app):
 
 def test_loading_another_pie_keeps_the_previous_one(app):
     app.load_example("All-World ETF")
-    expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
+    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
 
     app.load_example("60/40 Stocks & Bonds")
-    expect(app.page.get_by_role("button", name="✕ All-World ETF")).to_be_visible()
+    assert app.chips() == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
     expect(app.page.get_by_test_id("stAlert")).to_have_count(0)  # no banner about it
     assert [r[0] for r in comparison_rows(app)] == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
     assert app.metrics()  # tiles are for the pie being edited
 
-    app.click("✕ All-World ETF")
-    expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
+    app.remove_pie("All-World ETF")
+    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
     assert app.metrics()
 
 
 def test_reloading_the_same_pie_does_not_duplicate_it(app):
     app.load_example("All-World ETF")
-    app.click("Load example")
-    expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
+    app.load_example("All-World ETF")
+    assert app.chips() == ["All-World ETF (editing)"]
 
 
 def test_snapshot_of_your_own_pie(app):
@@ -35,28 +35,23 @@ def test_snapshot_of_your_own_pie(app):
 
     app.edit_weight(0, 70)  # weights now add up to 120%
     expect(app.page.get_by_text("Your pie appears here once")).to_be_visible()
-    expect(app.page.get_by_role("heading", name="Compared pies")).to_be_visible()
 
 
-def test_pie_selector_switches_the_allocation_donut(app):
+def test_clicking_a_compared_pie_opens_it(app):
     app.load_example("All-World ETF")
     app.load_example("Tech Leaders")
-    picker = app.page.get_by_role("radiogroup", name="Show allocation of")
-    expect(picker.get_by_role("radio", name="Tech Leaders (editing)")).to_be_checked()
-    picker.get_by_role("radio", name="All-World ETF").click()
-    app.wait()
-    donut = app.page.get_by_test_id("stPlotlyChart").first
-    expect(donut).to_contain_text("VWCE.DE")
-    expect(donut).not_to_contain_text("QDVE.DE")
+    app.open_pie("All-World ETF")
+    assert app.tickers() == ["VWCE.DE"]
+    assert app.chips() == ["All-World ETF (editing)", "Tech Leaders"]
+    expect(app.page.get_by_test_id("stPlotlyChart").first).to_contain_text("VWCE.DE")  # the donut
 
 
 def test_compared_pies_share_the_sidebar_settings(app):
     app.load_example("All-World ETF")
     app.load_example("Three-Fund Portfolio")
-    app.set_number("Initial investment (EUR)", 5000)
-    app.set_number("Monthly deposit (EUR)", 0)
-    # columns: Pie, From, Final value, Invested
-    app.eventually(lambda: {float(r[3]) for r in comparison_rows(app)}, {5000.0})
+    app.set_number("Initial (EUR)", 5000)
+    app.set_number("Monthly (EUR)", 0)
+    expect(app.page.get_by_text("Every pie had €5,000.00 put in.")).to_be_visible()
 
 
 def test_a_pie_with_later_assets_starts_later(app):
@@ -72,14 +67,11 @@ def test_every_loaded_pie_can_be_removed(app):
     # two examples loaded one after the other: both get a ✕, including the one being edited
     app.load_example("All-World ETF")
     app.load_example("60/40 Stocks & Bonds")
-    expect(app.page.get_by_role("button", name="✕ 60/40 Stocks & Bonds (editing)")).to_be_visible()
-    expect(app.page.get_by_role("button", name="✕ All-World ETF")).to_be_visible()
-
-    app.click("✕ 60/40 Stocks & Bonds (editing)")
+    app.remove_pie("60/40 Stocks & Bonds (editing)")
     # the other pie opens in the editor, keeping the sidebar settings
     assert app.tickers() == ["VWCE.DE"]
-    expect(app.sidebar.get_by_label("Pie name")).to_have_value("All-World ETF")
-    expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
+    assert app.chips() == ["All-World ETF (editing)"]
+    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
     assert app.metrics()
 
 
@@ -87,5 +79,4 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
     app.load_example("All-World ETF")
     app.load_example("60/40 Stocks & Bonds")
     app.load_example("All-World ETF")
-    app.eventually(lambda: [r[0] for r in comparison_rows(app)],
-                   ["All-World ETF (editing)", "60/40 Stocks & Bonds"])
+    assert app.chips() == ["All-World ETF (editing)", "60/40 Stocks & Bonds"]

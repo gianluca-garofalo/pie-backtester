@@ -221,7 +221,7 @@ def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial
 
     return {
         "values": values, "total": total, "invested": invested_s,
-        "twr": twr, "daily_r": daily_r, "units": units_df.iloc[-1], "prices": px,
+        "twr": twr, "daily_r": daily_r, "units": units_df.iloc[-1], "units_daily": units_df, "prices": px,
     }
 
 
@@ -263,6 +263,10 @@ def per_asset_table(res: dict, weights: dict[str, float], names: dict[str, str])
     last_vals = res["values"].iloc[-1]
     w = pd.Series(weights, dtype=float)
     w = w / w.sum()
+    # gain per asset: units held overnight times the next day's price move, so the gains add up to
+    # the pie's value minus what was put in, whatever the deposits and rebalancing did
+    daily_gain = (res["units_daily"].shift(1) * px.diff()).fillna(0.0)
+    history = res["values"].resample("W").last()
     return pd.DataFrame({
         "Asset": [names.get(t, t) for t in w.index],
         "Ticker": w.index,
@@ -270,4 +274,7 @@ def per_asset_table(res: dict, weights: dict[str, float], names: dict[str, str])
         "Current %": (last_vals / last_vals.sum() * 100).reindex(w.index).values,
         "Value": last_vals.reindex(w.index).values,
         "Price return %": ((px.ffill().iloc[-1] / px.bfill().iloc[0] - 1) * 100).reindex(w.index).values,
+        "Gain": daily_gain.sum().reindex(w.index).values,
+        "Drift": ((last_vals / last_vals.sum() * 100).reindex(w.index) - w * 100).values,
+        "History": [history[t].tolist() for t in w.index],
     })

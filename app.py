@@ -5,10 +5,12 @@ Run with:  streamlit run app.py
 import json
 from datetime import date
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from plotly.subplots import make_subplots
 
 import engine
 import storage
@@ -322,7 +324,7 @@ def money(x, ccy, compact=False):
     """€12,345.67, or €12.3k when compact (tiles and labels; tables keep full values)."""
     sign = CURRENCY_SIGNS.get(ccy, "")
     if compact and abs(x) >= 1000:
-        text = f"{abs(x) / 1000:,.1f}k"
+        text = f"{abs(x) / 1000:,.1f}".removesuffix(".0") + "k"
     else:
         text = f"{abs(x):,.0f}" if compact else f"{abs(x):,.2f}"
     text = f"{sign}{text}" if sign else f"{text} {ccy}"
@@ -671,6 +673,9 @@ if results:
 summary_slot.caption(summary.replace("$", "\\$"))  # a bare $ would start Markdown maths
 if results:
     st.divider()
+    # each pie keeps the colour of its chip in every chart and table
+    colors = {OWN: st.session_state.own_color} | {e["name"]: e.get("color") or "#8a8d96"
+                                                  for e in st.session_state.compare}
     if own:
         res, ccy = own, base_ccy
         m = engine.metrics(res)
@@ -678,63 +683,101 @@ if results:
         if late[OWN]:
             listed = ", ".join(f"{t} ({d})" for t, d in sorted(late[OWN].items(), key=lambda x: x[1], reverse=True))
             if before_listing == "wait":
-                st.warning(f"The backtest starts on {actual_start}, not {start}, because these assets "
-                           f"have no earlier prices: {listed}. To use the full period, choose "
-                           "'Hold … as cash' in the sidebar.")
+                with st.container(horizontal=True, vertical_alignment="center"):
+                    st.warning(f"This pie starts on {actual_start}, not {start}, because these assets have no "
+                               f"earlier prices: {listed}.")
+                    if st.button("Hold cash until they list",
+                                 help="Keep the full period: the slice of a later asset stays cash until it lists."):
+                        st.session_state.pending_settings = {"before_listing": "cash"}
+                        st.rerun()
             else:
                 st.info(f"These assets were held as cash until their first price: {listed}.")
-        st.subheader(f"{actual_start} to {res['total'].index[-1].date()}")
-        k = st.columns(5)
-        # currency goes in the label: five tiles side by side leave no room for it after the number
-        k[0].metric(f"Value ({ccy})", f"{m['final_value']:,.2f}", f"{m['profit']:+,.2f}")
-        k[1].metric(f"Invested ({ccy})", f"{m['invested']:,.2f}")
-        k[2].metric("Return (time-weighted)", f"{m['twr_total']*100:.1f}%",
-                    help="Performance of the pie itself, ignoring when deposits were made.")
-        k[3].metric("Yearly return (CAGR)", "—" if pd.isna(m["cagr"]) else f"{m['cagr']*100:.1f}%")
-        k[4].metric("Max drawdown", f"{m['max_drawdown']*100:.1f}%",
-                    help=f"Largest drop from a peak. Volatility: {m['volatility']*100:.1f}% a year.")
-    else:
-        st.subheader("Compared pies")
-        if st.session_state.pie:
-            st.caption("Your pie appears here once its weights add up to 100% and its tickers are fixed.")
 
-    # each pie keeps the colour of its chip in every chart and table
-    colors = {OWN: st.session_state.own_color} | {e["name"]: e.get("color") or "#8a8d96"
-                                                  for e in st.session_state.compare}
-    tab_names = ["Value", "By asset", "Drawdown", "Holdings"] if own else ["Value", "Drawdown"]
+        dd_own = res["twr"] / res["twr"].cummax() - 1
+        deposits = int((res["invested"].diff() > 0).sum())
+        gain = m["profit"]
+        with st.container(horizontal=True):
+            st.metric("Value now", money(m["final_value"], ccy, True), border=True, height="stretch",
+                      delta=f"{'-' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}",
+                      chart_data=res["total"].resample("W").last().tolist(), chart_type="area",
+                      help=f"What the pie is worth on {res['total'].index[-1].date()}.")
+            st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
+                      delta=f"{money(initial, ccy, True)} + {deposits} deposits", delta_color="off", delta_arrow="off")
+            st.metric("Return", f"{m['twr_total'] * 100:+.1f}%", border=True, height="stretch",
+                      delta="time-weighted", delta_color="off", delta_arrow="off",
+                      help="How the pie itself performed, ignoring when the deposits were made.")
+            st.metric("Per year", "—" if pd.isna(m["cagr"]) else f"{m['cagr'] * 100:+.1f}%", border=True, height="stretch",
+                      delta="CAGR", delta_color="off", delta_arrow="off",
+                      help="The average yearly growth of the pie (compound annual growth rate). Needs a year of data.")
+            st.metric("Worst fall", f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"), border=True, height="stretch",
+                      delta=f"lowest on {dd_own.idxmin().date()}", delta_color="off", delta_arrow="off",
+                      help=f"The largest drop from a previous high. Volatility: {m['volatility'] * 100:.1f}% a year.")
+    elif st.session_state.pie:
+        st.caption("Your pie appears here once its weights add up to 100% and its tickers are fixed.")
+
+    tab_names = ["Growth", "By asset", "Holdings"] if own else ["Growth"]
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
-    with tabs["Value"]:
-        fig = go.Figure()
-        for name, r in results.items():
-            fig.add_trace(go.Scatter(x=r["total"].index, y=r["total"], name=name,
-                                     line=dict(color=colors[name], width=2.5 if name == OWN else 1.8)))
+    with tabs["Growth"]:
+        years = max((r["total"].index[-1] - r["total"].index[0]).days for r in results.values()) / 365.25
+        with st.container(horizontal=True, horizontal_alignment="right"):
+            # log by default for long horizons: equal % moves then look equal
+            scale = st.segmented_control("Scale", ["Linear", "Log"], default="Log" if years > 10 else "Linear",
+                                         required=True, label_visibility="collapsed")
+            span = st.segmented_control("Period", ["1Y", "5Y", "Max"], default="Max", required=True,
+                                        label_visibility="collapsed")
+        last_day = max(r["total"].index[-1] for r in results.values())
+        since = last_day - pd.DateOffset(years=int(span[:-1])) if span != "Max" else pd.Timestamp.min
+
+        def window(series):
+            return series[series.index >= since]
+
         first = own if own else next(iter(results.values()))
-        fig.add_trace(go.Scatter(x=first["invested"].index, y=first["invested"], name="Invested",
-                                 line=dict(color="#888", dash="dot", shape="hv")))
-        fig.update_layout(height=450, hovermode="x unified", yaxis_title=base_ccy,
-                          margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.08))
+        lines = {name: window(r["total"]) for name, r in results.items()}
+        invested = window(first["invested"])
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26], vertical_spacing=0.05)
+        fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
+                                 line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
+        for name, r in results.items():
+            fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=name, hovertemplate="%{y:,.0f}",
+                                     line=dict(color=colors[name], width=2.6 if name == OWN else 1.8)),
+                          row=1, col=1)
+            dd = window((r["twr"] / r["twr"].cummax() - 1) * 100)
+            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=name, showlegend=False, hovertemplate="%{y:.1f}%",
+                                     line=dict(color=colors[name], width=1.2),
+                                     fill="tozeroy" if len(results) == 1 else None), row=2, col=1)
+
+        # names at the line ends instead of a legend, nudged apart so they don't overlap
+        values = pd.concat(list(lines.values()) + [invested])
+        lo, hi = max(values.min(), 1e-9) * 0.95, values.max() * 1.05
+        if scale == "Log":
+            lo, hi = np.log10(lo), np.log10(hi)
+        ends = sorted([(n, s.iloc[-1], colors[n]) for n, s in lines.items()] +
+                      [("You put in", invested.iloc[-1], "#5f636e")], key=lambda x: -x[1])
+        y_prev = 1.08
+        for name, value, color in ends:
+            y = ((np.log10(value) if scale == "Log" else value) - lo) / (hi - lo)
+            y = min(y, y_prev - 0.07)
+            y_prev = y
+            label = name.removesuffix(" (editing)")
+            fig.add_annotation(x=1.005, y=y, xref="x domain", yref="y domain", xanchor="left", showarrow=False,
+                               text=f"<b>{label}</b> {money(value, base_ccy, True)}", font=dict(color=color, size=12))
+        fig.update_yaxes(type="log" if scale == "Log" else "linear", range=[lo, hi], title=base_ccy, row=1, col=1)
+        fig.update_yaxes(title="% below high", row=2, col=1)
+        fig.update_layout(height=560, hovermode="x unified", showlegend=False, margin=dict(t=10, b=10, r=190))
         st.plotly_chart(fig)
         later = {n: r["total"].index[0].date() for n, r in results.items()
                  if n != OWN and r["total"].index[0].date() > start + pd.Timedelta(days=7)}
         for n, d in later.items():
-            why = ", ".join(late[n]) if late[n] else "no earlier prices"
-            st.caption(f"'{n}' starts on {d}: {why} {'has' if len(late[n]) == 1 else 'have'} no earlier prices."
-                       if late[n] else f"'{n}' starts on {d}.")
-    with tabs["Drawdown"]:
-        fig = go.Figure()
-        for name, r in results.items():
-            dd = (r["twr"] / r["twr"].cummax() - 1) * 100
-            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=name, line=dict(color=colors[name]),
-                                     fill="tozeroy" if len(results) == 1 else None))
-        fig.update_layout(height=380, hovermode="x unified", yaxis_title="% below previous peak",
-                          margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.1),
-                          showlegend=len(results) > 1)
-        st.plotly_chart(fig)
+            st.caption(f"'{n}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
+                       "no earlier prices." if late[n] else f"'{n}' starts on {d}.")
+        st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
+                   f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
+                   "predict future returns.")
     if own:
         weights = dict(entries[0][1])
         with tabs["By asset"]:
             vals = res["values"].rename(columns=names)
-            fig = px.area(vals, color_discrete_sequence=PALETTE)
+            fig = px.area(vals, color_discrete_sequence=shades(st.session_state.own_color, len(names)))
             fig.update_layout(height=450, hovermode="x unified", yaxis_title=ccy, legend_title="",
                               margin=dict(t=20, b=20))
             st.plotly_chart(fig)
@@ -744,12 +787,20 @@ if results:
             st.plotly_chart(fig2)
         with tabs["Holdings"]:
             table = engine.per_asset_table(res, weights, names)
-            st.dataframe(table, hide_index=True, width="stretch", column_config={
-                "Target %": st.column_config.NumberColumn(format="%.1f"),
-                "Current %": st.column_config.NumberColumn(format="%.1f"),
-                "Value": st.column_config.NumberColumn(format=f"%.2f {ccy}"),
-                "Price return %": st.column_config.NumberColumn(format="%.1f"),
-            })
+            st.dataframe(table, hide_index=True, width="stretch",
+                         column_order=["Asset", "Ticker", "Target %", "Current %", "Drift", "Value", "Gain",
+                                       "Price return %", "History"],
+                         column_config={
+                             "Target %": st.column_config.NumberColumn(format="%.1f"),
+                             "Current %": st.column_config.NumberColumn(format="%.1f"),
+                             "Drift": st.column_config.NumberColumn(
+                                 format="%+.1f pp", help="Current weight minus target weight, in percentage points"),
+                             "Value": st.column_config.NumberColumn(format=f"%.2f {ccy}"),
+                             "Gain": st.column_config.NumberColumn(
+                                 format=f"%+.2f {ccy}", help="What this asset added to the pie's gain"),
+                             "Price return %": st.column_config.NumberColumn(format="%+.1f"),
+                             "History": st.column_config.AreaChartColumn("Value over time"),
+                         })
             st.caption("Currencies of the listings: " +
                        ", ".join(f"{t} {currencies.get(t, '?')}" for t in weights) +
                        f". All values are converted to {ccy} with daily FX rates.")
@@ -761,23 +812,37 @@ elif st.session_state.pie and not settings_ok:
 elif st.session_state.pie and not own_ready:
     st.info("The results appear here once the weights add up to 100% and every ticker is found.")
 
-# ---------------- comparison ----------------
-if st.session_state.compare:
-    st.divider()
+# ---------------- comparison table ----------------
+if st.session_state.compare and len(results) > 1:
     st.subheader("Compared pies")
-    if len(results) > 1:
-        st.dataframe(engine.comparison_table(results), hide_index=True, width="stretch", column_config={
-            "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
-            "Final value": st.column_config.NumberColumn(f"Final value ({base_ccy})", format="%.2f"),
-            "Invested": st.column_config.NumberColumn(f"Invested ({base_ccy})", format="%.2f"),
-            "Return %": st.column_config.NumberColumn("Return % (time-weighted)", format="%.1f"),
-            "CAGR %": st.column_config.NumberColumn(format="%.1f"),
-            "Max drawdown %": st.column_config.NumberColumn(format="%.1f"),
-            "Volatility %": st.column_config.NumberColumn(format="%.1f"),
-        })
-        st.caption("All pies use the sidebar settings: same currency, dates, deposits and rebalancing. "
-                   "A pie whose assets list later starts later, so check the From column.")
+    table = engine.comparison_table(results)
+    same_invested = table["Invested"].round(2).nunique() == 1
+    shown = table[["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"]
+                  + ([] if same_invested else ["Invested"])]
+    best = {"Final value": "max", "Return %": "max", "CAGR %": "max", "Max drawdown %": "max", "Volatility %": "min"}
 
-if results:
-    st.caption("Assumes fractional shares, no fees or taxes, and dividends reinvested. "
-               "Disclaimer: Not financial advice. Past performance doesn't predict future returns.")
+    def emphasis(df):
+        """Each pie's name in its colour; the best value in each column in bold."""
+        css = pd.DataFrame("", index=df.index, columns=df.columns)
+        for col, how in best.items():
+            if df[col].notna().any():
+                css.loc[getattr(df[col], f"idx{how}")(), col] = "font-weight: 700"
+        css["Pie"] = [f"color: {colors.get(n, '#8a8d96')}; font-weight: 600" for n in df["Pie"]]
+        return css
+
+    pct = lambda v: "—" if pd.isna(v) else f"{v:+.1f}%"  # noqa: E731
+    st.dataframe(
+        shown.style.apply(emphasis, axis=None).format({
+            "Final value": lambda v: money(v, base_ccy), "Invested": lambda v: money(v, base_ccy),
+            "Return %": pct, "CAGR %": pct,
+            "Max drawdown %": lambda v: f"{v:.1f}%".replace("-", "−"), "Volatility %": "{:.1f}%"}),
+        hide_index=True, width="stretch", column_config={
+            "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
+            "Final value": "Value", "Return %": st.column_config.Column("Return", help="Time-weighted"),
+            "CAGR %": st.column_config.Column("Per year", help="CAGR"),
+            "Max drawdown %": st.column_config.Column("Worst fall", help="Largest drop from a previous high"),
+            "Volatility %": st.column_config.Column("Volatility", help="How much it swings, per year"),
+        })
+    st.caption("Bold: best in the column." +
+               (f" Every pie had {money(table['Invested'].iloc[0], base_ccy)} put in." if same_invested else "") +
+               " All pies use the sidebar settings; a pie whose assets list later starts later (see From).")

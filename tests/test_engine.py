@@ -115,3 +115,17 @@ def test_comparison_table_has_one_row_per_pie():
     assert table.loc[0, "Final value"] == pytest.approx(1500)
     assert table.loc[0, "Return %"] == pytest.approx(50)
     assert table.loc[1, "Max drawdown %"] == pytest.approx(0)
+
+
+def test_per_asset_gains_add_up_to_the_pies_gain():
+    dates = pd.date_range("2023-01-02", periods=70, freq="D")
+    prices = pd.DataFrame({"UP": [100 + i for i in range(70)],
+                           "DOWN": [50 - i * 0.2 for i in range(70)]}, index=dates, dtype=float)
+    res = engine.simulate_pie(prices, {"UP": 60, "DOWN": 40}, "2023-01-02", initial=1000, monthly=100,
+                              rebalance="Monthly")
+    table = engine.per_asset_table(res, {"UP": 60, "DOWN": 40}, {"UP": "Up", "DOWN": "Down"})
+    gain = res["total"].iloc[-1] - res["invested"].iloc[-1]
+    assert table["Gain"].sum() == pytest.approx(gain)
+    assert table.set_index("Ticker").loc["UP", "Gain"] > 0 > table.set_index("Ticker").loc["DOWN", "Gain"]
+    assert table["Drift"].tolist() == pytest.approx((table["Current %"] - table["Target %"]).tolist())
+    assert len(table.loc[0, "History"]) > 1

@@ -25,7 +25,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ## Conventions
 
 - Keep logic that can be tested out of `app.py` and in `engine.py`, `storage.py` or `sharing.py`, with unit tests.
-- Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`, `save_pie_name_input`). Change them only through `load_pie()`, which applies them on the next rerun through `pending_settings`.
+- Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`). Change them only through `load_pie()` or `pending_settings`, which is applied on the next rerun. The open pie's name and colour live in `pie_name` and `own_color`, not in widgets.
+- Each loaded pie has a fixed colour from `PIE_COLORS` (Okabe-Ito; also in `.streamlit/config.toml`). It's assigned when the pie is loaded and used for its chip, chart lines, table name and donut shades (`shades()`). Keep the donut for allocations: the user chose it over bar charts.
+- The pie table starts from `editor_base`, a snapshot that only changes on `pie_changed()`. Passing the live pie makes Streamlit drop every other edit.
+- Format money with `money(x, ccy, compact)`. Escape `$` before passing text to Markdown or `st.caption`, or it turns into maths.
 - Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
 - Load prices with `prices_for()`, which caches each ticker separately, so the single backtest and the comparison reuse downloads. Every pie, yours and the compared ones, is simulated by `cached_backtest`, cached per pie, so unrelated reruns don't re-simulate. Each pie starts on its first day with prices within the sidebar dates.
 - Sign-in and storage: `st.login` (Google) identifies users as `google:<sub>`. Supabase is a database used only from the server with the service key, so `SupabaseStorageBackend` must filter every query by `owner_id`; RLS is not the safety net. Never offer the guest account when storage is shared.

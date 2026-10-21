@@ -98,9 +98,45 @@ class App:
         self.wait()
 
     def load_example(self, name):
-        if self.page.get_by_role("combobox", name="Load example pie").input_value() != name:
-            self.choose("Load example pie", name)
-        self.click("Load example")
+        """Load an example from the Examples menu in the header."""
+        body = self.page.get_by_test_id("stPopoverBody")
+        option = body.get_by_role("button", name=name, exact=True)
+        if not option.count() or not option.is_visible():
+            self.page.get_by_role("button", name="Examples").click()
+        option.click()
+        self.wait()
+
+    # --- the pie strip: one chip per loaded pie ---
+    def chip_key(self, name):
+        for el in self.page.locator("[class*='st-key-chip_name_']").all():
+            if el.inner_text().strip() == name:
+                cls = next(c for c in el.get_attribute("class").split() if c.startswith("st-key-chip_name_"))
+                return cls.removeprefix("st-key-chip_name_")
+        return None
+
+    def chips(self):
+        return [el.inner_text().strip() for el in self.page.locator("[class*='st-key-chip_name_']").all()]
+
+    def open_pie(self, name):
+        self.page.locator(f".st-key-chip_name_{self.chip_key(name)} button").first.click()
+        self.wait()
+
+    def remove_pie(self, name):
+        self.page.locator(f".st-key-chip_x_{self.chip_key(name)} button").first.click()
+        self.wait()
+
+    def save_pie(self, name):
+        self.page.get_by_role("button", name="Save", exact=True).click()
+        dialog = self.page.get_by_role("dialog")
+        dialog.get_by_label("Pie name").fill(name)
+        dialog.get_by_role("button", name="Save pie").click()
+        self.wait()
+
+    def open_sidebar_section(self, title):
+        section = self.sidebar.get_by_test_id("stExpander").filter(has_text=title)
+        if section.locator("details").get_attribute("open") is None:
+            section.locator("summary").click()
+            self.page.wait_for_timeout(300)
 
     def set_number(self, label, value):
         self.page.get_by_role("spinbutton", name=label).fill(str(value))
@@ -169,11 +205,18 @@ class App:
         self.wait()
 
     def metrics(self):
+        """Tile label -> value, e.g. {"Value now": "$22.8k", ...}."""
         out = {}
         for m in self.page.get_by_test_id("stMetric").all():
             label = m.get_by_test_id("stMetricLabel").inner_text().strip()
             out[label] = m.get_by_test_id("stMetricValue").inner_text().strip()
         return out
+
+    @staticmethod
+    def amount(text):
+        """'$22.8k' or '€9,100.00' -> 22800.0 / 9100.0"""
+        t = text.strip().lstrip("$€£").replace(",", "").replace("−", "-")
+        return float(t[:-1]) * 1000 if t.endswith("k") else float(t.split()[0])
 
     def alerts(self):
         return [a.inner_text() for a in self.page.get_by_test_id("stAlert").all()]
