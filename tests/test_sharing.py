@@ -26,3 +26,10 @@ def test_encode_decode_roundtrip():
 def test_decode_invalid():
     assert decode_pie_from_query_param("invalid_base64_data!!!") is None
     assert decode_pie_from_query_param("") is None
+
+
+def test_decode_rejects_oversized_payload():
+    import base64, json, zlib
+    huge = {"assets": [{"ticker": "VWCE.DE", "weight": 100.0, "name": "x" * 5_000_000}]}
+    param = base64.urlsafe_b64encode(zlib.compress(json.dumps(huge).encode(), 9)).decode().rstrip("=")
+    assert decode_pie_from_query_param(param) is None

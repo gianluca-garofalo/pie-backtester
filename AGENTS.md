@@ -1,0 +1,36 @@
+# Pie backtester: agent guide
+
+A Streamlit app that backtests a Trading 212-style pie of ETFs and stocks using Yahoo Finance data.
+
+## Layout
+
+- `app.py`: the Streamlit UI (one script that reruns on every interaction)
+- `engine.py`: data loading (yfinance), ticker resolution, simulation, metrics. Contains no UI code.
+- `storage.py`: pie schema (`validate_pie` / `normalize_pie`), local JSON backend, Supabase backend
+- `sharing.py`: `?pie=` share-link encoding (zlib + urlsafe base64)
+- `auth.py`: Streamlit native Google auth plus a local guest account
+- `examples/*.json`: example pies, including their settings (currency, start, monthly, rebalance)
+- `tests/`: unit tests. `tests/e2e/`: Playwright browser tests.
+
+## Commands
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/playwright install chromium
+.venv/bin/streamlit run app.py                # http://localhost:8501
+.venv/bin/python -m pytest                    # unit tests only (what CI runs)
+.venv/bin/python -m pytest -m e2e             # browser tests: starts the app itself, needs internet
+```
+
+## Conventions
+
+- Keep logic that can be tested out of `app.py` and in `engine.py`, `storage.py` or `sharing.py`, with unit tests.
+- Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`, `save_pie_name_input`). Change them only through `load_pie()`, which applies them on the next rerun through `pending_settings`.
+- Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
+- Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
+
+## Things that are easy to get wrong
+
+- Yahoo tickers: European ETFs need an exchange suffix (`VWCE.DE`). US stocks don't (`AAPL`). `resolve_ticker` must rank the exact bare listing above foreign ones such as `AAPL.TO`, which is a Canadian depositary receipt.
+- `st.date_input` defaults to a lower bound 10 years back, so always pass `min_value`.
+- Streamlit 1.66 DOM, for E2E tests: selects are react-aria comboboxes (`get_by_role("combobox", name=label)`). The pie table is a canvas grid, so read it through its hidden `table` and edit by clicking coordinates, then Enter, then typing. Dates commit on blur, not on Tab. Wait for reruns with `stApp[data-test-script-state=notRunning]`.

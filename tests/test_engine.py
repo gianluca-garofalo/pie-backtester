@@ -51,3 +51,30 @@ def test_metrics_calculation():
     assert m["invested"] == 1000.0
     assert m["profit"] == 100.0
     assert pytest.approx(m["twr_total"], 0.001) == 0.10
+
+
+def _fake_search(symbols):
+    return lambda q, max_results=10: [
+        {"symbol": s, "name": s, "exchange": "", "type": "EQUITY"} for s in symbols
+    ]
+
+
+def test_resolve_ticker_keeps_exact_listing_over_foreign_ones(monkeypatch):
+    # AAPL.TO is a Canadian depositary receipt, not the Apple share a bare "AAPL" means
+    monkeypatch.setattr(engine, "search_assets", _fake_search(["AAPL.TO", "AAPL.MX", "AAPL"]))
+    assert engine.resolve_ticker("AAPL", "USD")[0]["symbol"] == "AAPL"
+
+
+def test_resolve_ticker_prefers_currency_exchange(monkeypatch):
+    monkeypatch.setattr(engine, "search_assets", _fake_search(["VWRA.SW", "VWRA.L", "VWRA.AQ"]))
+    assert [h["symbol"] for h in engine.resolve_ticker("VWRA", "USD")] == ["VWRA.L", "VWRA.SW", "VWRA.AQ"]
+
+
+def test_rebase_starts_late_assets_at_their_first_price():
+    dates = pd.date_range("2023-01-01", periods=4, freq="D")
+    prices = pd.DataFrame({"OLD": [10.0, 11.0, 12.0, 13.0],
+                           "NEW": [float("nan"), float("nan"), 50.0, 55.0]}, index=dates)
+    rebased = engine.rebase(prices)
+    assert rebased["OLD"].tolist() == pytest.approx([100.0, 110.0, 120.0, 130.0])
+    assert rebased["NEW"].iloc[2:].tolist() == pytest.approx([100.0, 110.0])
+    assert rebased["NEW"].iloc[:2].isna().all()

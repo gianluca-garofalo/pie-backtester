@@ -82,3 +82,33 @@ def test_local_storage_crud(tmp_path):
     assert deleted is True
     assert storage.get_pie(pie_id) is None
     assert storage.list_pies() == []
+
+
+def test_validate_pie_rejects_nan_weight():
+    data = {"assets": [{"ticker": "VWCE.DE", "weight": float("nan")}, {"ticker": "EUNA.DE", "weight": 100.0}]}
+    is_valid, msg = validate_pie(data)
+    assert is_valid is False
+    assert "VWCE.DE" in msg
+
+
+def test_validate_pie_legacy_bad_weight_is_invalid_not_an_exception():
+    is_valid, msg = validate_pie({"pie": [{"Ticker": "VWCE.DE", "Weight %": "lots"}]})
+    assert is_valid is False
+
+
+def test_normalize_pie_null_name_falls_back_to_ticker():
+    norm = normalize_pie({"assets": [{"ticker": "vwce.de", "weight": 100.0, "name": None}]})
+    assert norm["assets"][0]["name"] == "VWCE.DE"
+
+
+def test_supabase_save_raises_when_request_is_rejected(monkeypatch):
+    import storage
+
+    class Resp:
+        status_code = 401
+        text = '{"message":"new row violates row-level security policy"}'
+
+    monkeypatch.setattr(storage.requests, "post", lambda *a, **k: Resp())
+    backend = storage.SupabaseStorageBackend(url="https://x.supabase.co", key="anon")
+    with pytest.raises(RuntimeError, match="401"):
+        backend.save_pie({"assets": [{"ticker": "VWCE.DE", "weight": 100.0}]})

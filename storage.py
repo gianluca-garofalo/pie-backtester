@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import uuid
 from typing import Any, Protocol
@@ -36,14 +37,11 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
         # legacy format support
         legacy_assets = data.get("pie")
         if isinstance(legacy_assets, list):
-            assets = []
-            for item in legacy_assets:
-                if isinstance(item, dict):
-                    assets.append({
-                        "ticker": item.get("Ticker", ""),
-                        "weight": float(item.get("Weight %", 0.0)),
-                        "name": item.get("Name", "")
-                    })
+            assets = [
+                {"ticker": item.get("Ticker", ""), "weight": item.get("Weight %", 0.0), "name": item.get("Name", "")}
+                if isinstance(item, dict) else item
+                for item in legacy_assets
+            ]
 
     if not isinstance(assets, list) or len(assets) == 0:
         return False, "Pie must contain at least one asset"
@@ -61,6 +59,8 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
         except (ValueError, TypeError):
             return False, f"Asset '{ticker}' has an invalid weight"
 
+        if not math.isfinite(w):
+            return False, f"Asset '{ticker}' has an invalid weight"
         if w < 0:
             return False, f"Asset '{ticker}' weight cannot be negative"
         total_weight += w
@@ -83,7 +83,7 @@ def normalize_pie(data: dict[str, Any]) -> dict[str, Any]:
             {
                 "ticker": item.get("Ticker", "").strip().upper(),
                 "weight": float(item.get("Weight %", 0.0)),
-                "name": item.get("Name", "").strip() or item.get("Ticker", "").strip().upper()
+                "name": str(item.get("Name") or "").strip() or item.get("Ticker", "").strip().upper()
             }
             for item in data["pie"]
         ]
@@ -92,7 +92,7 @@ def normalize_pie(data: dict[str, Any]) -> dict[str, Any]:
             {
                 "ticker": str(item.get("ticker", item.get("Ticker", ""))).strip().upper(),
                 "weight": float(item.get("weight", item.get("Weight %", 0.0))),
-                "name": str(item.get("name", item.get("Name", ""))).strip() or str(item.get("ticker", item.get("Ticker", ""))).strip().upper()
+                "name": str(item.get("name") or item.get("Name") or "").strip() or str(item.get("ticker", item.get("Ticker", ""))).strip().upper()
             }
             for item in assets_raw
         ]
@@ -289,14 +289,15 @@ class SupabaseStorageBackend:
                 json=payload,
                 timeout=5
             )
-            if resp.status_code in (200, 201):
-                rows = resp.json()
-                if rows:
-                    cfg = rows[0].get("config", {})
-                    cfg["id"] = rows[0].get("id")
-                    return normalize_pie(cfg)
         except Exception as e:
             raise RuntimeError(f"Failed to save pie to Supabase: {e}")
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"Failed to save pie to Supabase: HTTP {resp.status_code} {resp.text[:200]}")
+        rows = resp.json()
+        if rows:
+            cfg = rows[0].get("config", {})
+            cfg["id"] = rows[0].get("id")
+            return normalize_pie(cfg)
         return normalized
 
     def delete_pie(self, pie_id: str, user_id: str | None = None) -> bool:

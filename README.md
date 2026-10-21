@@ -21,7 +21,7 @@ Open http://localhost:8501 in your browser.
 
 ## How to Use
 
-1. **Load or Create a Pie**: Choose an example pie from the sidebar dropdown, upload a `.json` file, or search by ISIN, ticker, or name (e.g. `VWCE.DE`, `AGGH.DE`, `AAPL`) to add assets manually.
+1. **Load or Create a Pie**: Choose an example pie from the sidebar dropdown, upload a `.json` file, or search by ISIN, ticker, or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`) to add assets manually.
 2. **Set Target Weights**: Ensure asset weights sum to 100% (or use the "Split evenly" button).
 3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
 4. **Run Backtest**: Click "Run backtest" to view performance charts, drawdowns, CAGR, and holdings breakdown.

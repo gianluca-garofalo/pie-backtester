@@ -17,3 +17,5 @@ streamlit.log
 /home/jules/verification/
 .pytest_cache/
 .coverage
+.venv/
+test-results/

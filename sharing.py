@@ -9,6 +9,7 @@ from typing import Any
 from storage import validate_pie, normalize_pie
 
 MAX_SHARE_URL_PARAM_LEN = 2000
+MAX_DECODED_BYTES = 64_000  # far above any real pie; stops zip bombs in crafted links
 
 
 def encode_pie_to_query_param(pie_data: dict[str, Any]) -> str:
@@ -18,6 +19,7 @@ def encode_pie_to_query_param(pie_data: dict[str, Any]) -> str:
         raise ValueError(f"Invalid pie data: {err}")
 
     norm = normalize_pie(pie_data)
+    norm.pop("id")  # keeps links short; the receiver gets a fresh id
     json_bytes = json.dumps(norm, separators=(',', ':')).encode('utf-8')
     compressed = zlib.compress(json_bytes, level=9)
     encoded = base64.urlsafe_b64encode(compressed).decode('ascii').rstrip('=')
@@ -35,7 +37,10 @@ def decode_pie_from_query_param(param_str: str) -> dict[str, Any] | None:
         if padding != 4:
             param_str += '=' * padding
         compressed = base64.urlsafe_b64decode(param_str)
-        json_bytes = zlib.decompress(compressed)
+        decompressor = zlib.decompressobj()
+        json_bytes = decompressor.decompress(compressed, MAX_DECODED_BYTES)
+        if decompressor.unconsumed_tail:
+            return None
         data = json.loads(json_bytes.decode('utf-8'))
         is_valid, _ = validate_pie(data)
         if is_valid:

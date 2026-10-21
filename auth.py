@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+GUEST_USER = {"email": "guest@local.dev", "name": "Local Guest", "id": "local_guest_user"}
+
 
 def is_auth_configured(provider: str = "google") -> bool:
     """Check if all required auth secrets for provider are present in st.secrets."""
@@ -50,6 +52,12 @@ def render_auth_ui() -> dict[str, str] | None:
             if st.button("Log out", key="custom_logout_btn", width="stretch"):
                 st.session_state.pop("custom_user", None)
                 st.rerun()
+    elif not is_auth_configured():
+        # st.login() can only fail without secrets, so don't offer it
+        st.caption("Google sign-in isn't set up (see README). Pies are saved on this machine.")
+        if st.button("Use Local Guest Account", key="guest_login_btn", width="stretch"):
+            st.session_state["custom_user"] = dict(GUEST_USER)
+            st.rerun()
     else:
         st.caption("Sign in to save and manage your pies across devices.")
         if st.button("Sign in with Google", key="login_btn", type="primary", width="stretch"):
@@ -66,11 +74,7 @@ def render_auth_ui() -> dict[str, str] | None:
                        "Please check `.streamlit/secrets.toml` for `redirect_uri`, `cookie_secret`, "
                        "and `[auth.google]` settings (see README).")
             if st.button("Use Local Guest Account", key="guest_login_btn", width="stretch"):
-                st.session_state["custom_user"] = {
-                    "email": "guest@local.dev",
-                    "name": "Local Guest",
-                    "id": "local_guest_user"
-                }
+                st.session_state["custom_user"] = dict(GUEST_USER)
                 st.session_state.pop("auth_error", None)
                 st.rerun()
 

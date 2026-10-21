@@ -50,9 +50,11 @@ def resolve_ticker(ticker: str, base_ccy: str = "EUR") -> list[dict]:
     pref = EXCHANGE_PREFERENCE.get(base_ccy.upper(), EXCHANGE_PREFERENCE["EUR"])
 
     def rank(h):
+        # preferred exchanges first, then the exact bare listing (e.g. US AAPL),
+        # then anything else (e.g. AAPL.TO, a Canadian depositary receipt)
         sym = h["symbol"].upper()
         suffix = sym[len(t):]
-        return pref.index(suffix) if suffix in pref else len(pref) + (0 if suffix else 1)
+        return pref.index(suffix) if suffix in pref else len(pref) + (1 if suffix else 0)
 
     hits = sorted(hits, key=rank)
     if hits:
@@ -145,6 +147,11 @@ def _period_starts(index: pd.DatetimeIndex, freq: str | None) -> set:
 
 def first_price_dates(prices: pd.DataFrame, start) -> pd.Series:
     return prices.loc[pd.Timestamp(start):].apply(lambda s: s.first_valid_index())
+
+
+def rebase(prices: pd.DataFrame, base: float = 100.0) -> pd.DataFrame:
+    """Each column relative to its own first price, so late-listing assets still show up."""
+    return prices / prices.bfill().iloc[0] * base
 
 
 def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial: float,
