@@ -19,6 +19,9 @@ st.set_page_config(page_title="Pie backtester", page_icon="🥧", layout="wide")
 
 PALETTE = ["#1F6F78", "#E0A526", "#5B4B8A", "#C8553D", "#3E8E5E", "#2E4057",
            "#B56576", "#7A9E9F", "#D98E04", "#4F5D75", "#8AA29E", "#9C6644"]
+# one colour per pie, kept for as long as the pie is loaded (Okabe-Ito, colour-blind safe;
+# same list as chartCategoricalColors in .streamlit/config.toml)
+PIE_COLORS = ["#0072B2", "#B86E00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"]
 
 if "pie" not in st.session_state:
     st.session_state.pie = []  # list of {"Ticker", "Name", "Weight %"}
@@ -29,7 +32,9 @@ if "fix_report" not in st.session_state:
 if "verified_tickers" not in st.session_state:
     st.session_state.verified_tickers = set()  # bare tickers Yahoo knows as-is, e.g. AAPL
 if "compare" not in st.session_state:
-    st.session_state.compare = []  # other pies to compare with yours: {"name", "weights": {ticker: %}}
+    st.session_state.compare = []  # other pies to compare with yours: {"name", "weights", "names", "color"}
+st.session_state.setdefault("pie_name", "My Pie")  # name of the pie in the table
+st.session_state.setdefault("own_color", PIE_COLORS[0])
 
 MAX_COMPARED = 5  # pies in one comparison, including yours
 
@@ -37,8 +42,13 @@ CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"]
 # sidebar settings, keyed so a loaded pie can set them
 for _key, _default in {"base_ccy": "EUR", "start": date(2020, 1, 1), "end": date.today(),
                        "initial": 1000.0, "monthly": 0.0, "rebalance": "Never",
-                       "before_listing": "wait", "save_pie_name_input": "My Pie"}.items():
+                       "before_listing": "wait"}.items():
     st.session_state.setdefault(_key, _default)
+
+
+def free_color(taken):
+    """The first pie colour no loaded pie uses."""
+    return next((c for c in PIE_COLORS if c not in taken), PIE_COLORS[len(taken) % len(PIE_COLORS)])
 
 
 def pie_changed():
@@ -55,18 +65,20 @@ def load_pie(cfg):
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
     if previous and abs(sum(previous.values()) - 100) <= 0.01 and previous != loaded:
-        add_to_comparison({"name": st.session_state.save_pie_name_input,
+        add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
-                                      for a in st.session_state.pie if a["Ticker"] in previous]})
+                                      for a in st.session_state.pie if a["Ticker"] in previous]},
+                          color=st.session_state.own_color)
     st.session_state.compare = [e for e in st.session_state.compare if e["weights"] != loaded]
+    st.session_state.own_color = free_color({e.get("color") for e in st.session_state.compare})
+    st.session_state.pie_name = cfg.get("name") or "My Pie"
     st.session_state.pie = [
         {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
         for a in cfg.get("assets", [])
     ]
     st.session_state.fix_report = None
     # widgets are already drawn this run, so their new values are applied on the next one
-    pending = {"save_pie_name_input": cfg.get("name") or "My Pie",
-               "initial": float(cfg.get("initial", 1000.0)), "monthly": float(cfg.get("monthly", 0.0))}
+    pending = {"initial": float(cfg.get("initial", 1000.0)), "monthly": float(cfg.get("monthly", 0.0))}
     if cfg.get("currency") in CURRENCIES:
         pending["base_ccy"] = cfg["currency"]
     if cfg.get("rebalance") in engine.REBALANCE_RULES:
@@ -93,7 +105,8 @@ def close_open_pie():
         e = st.session_state.compare.pop()
         st.session_state.pie = [{"Ticker": t, "Name": e.get("names", {}).get(t, t), "Weight %": w}
                                 for t, w in e["weights"].items()]
-        st.session_state.pending_settings = {"save_pie_name_input": e["name"]}
+        st.session_state.pie_name = e["name"]
+        st.session_state.own_color = e.get("color") or st.session_state.own_color
     st.session_state.fix_report = None
     pie_changed()
 
@@ -189,7 +202,7 @@ def prices_for(tickers, start, end, base):
     return pd.concat(frames, axis=1).sort_index().ffill(), {"currencies": currencies}
 
 
-def add_to_comparison(cfg):
+def add_to_comparison(cfg, color=None):
     """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
@@ -213,7 +226,8 @@ def add_to_comparison(cfg):
     name, n = cfg.get("name") or "Pie", 2
     while name in taken:
         name, n = f"{cfg.get('name') or 'Pie'} ({n})", n + 1
-    others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}})
+    color = color or free_color({e.get("color") for e in others} | {st.session_state.own_color})
+    others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color})
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -230,11 +244,11 @@ def cached_backtest(assets, start, end, base, initial, monthly, rebalance, befor
     return res, late, info["currencies"]
 
 
-def pie_payload(name):
+def pie_payload(name=None):
     """The current pie and settings in the shared pie schema (see storage.validate_pie)."""
     return {
         "version": 1,
-        "name": name,
+        "name": name or st.session_state.pie_name,
         "currency": st.session_state.base_ccy,
         "assets": [
             {"ticker": a["Ticker"], "weight": float(a["Weight %"] or 0), "name": a.get("Name") or ""}
@@ -262,139 +276,167 @@ except Exception:
 active_storage = storage.get_storage(url=supabase_url, key=supabase_key)
 shared_storage = isinstance(active_storage, storage.SupabaseStorageBackend)
 
-# ---------------- sidebar: settings ----------------
+CURRENCY_SIGNS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+
+def money(x, ccy, compact=False):
+    """€12,345.67, or €12.3k when compact (tiles and labels; tables keep full values)."""
+    sign = CURRENCY_SIGNS.get(ccy, "")
+    if compact and abs(x) >= 1000:
+        text = f"{abs(x) / 1000:,.1f}k"
+    else:
+        text = f"{abs(x):,.0f}" if compact else f"{abs(x):,.2f}"
+    text = f"{sign}{text}" if sign else f"{text} {ccy}"
+    return f"−{text}" if x < 0 else text
+
+
+@st.dialog("Save pie")
+def save_dialog():
+    name = st.text_input("Pie name", value=st.session_state.pie_name)
+    is_pub = st.checkbox("Make public", value=False)
+    if st.button("Save pie", type="primary", key="save_confirm"):
+        try:
+            saved = active_storage.save_pie(dict(pie_payload(name), is_public=is_pub), user_id=user_id)
+            st.session_state.pie_name = saved["name"]
+            flash("success", f"Saved pie '{saved['name']}'.")
+            st.rerun()
+        except Exception as ex:
+            st.error(f"Failed to save pie: {ex}")
+
+
+# ---------------- sidebar: settings first, then your pies, then the account ----------------
 with st.sidebar:
-    st.header("Account & Storage")
+    settings_box, pies_box, account_box = st.container(), st.container(), st.container()
+
+with account_box:
+    st.divider()
     if supabase_url and legacy_anon_key and not supabase_key:
         st.warning("`SUPABASE_KEY` (the anon key) is no longer used. Set `SUPABASE_SERVICE_KEY` "
                    "to store pies in Supabase (see README). Pies are saved on this machine for now.")
     current_user = auth.render_auth_ui(allow_guest=not shared_storage)
     user_id = current_user.get("id") if current_user else None
 
-    st.divider()
-    st.header("Settings")
+with settings_box:
+    st.subheader("Backtest settings")
     base_ccy = st.selectbox("Pie currency", CURRENCIES, key="base_ccy")
     # Streamlit's default lower bound is only ten years back
     start = st.date_input("Start date", min_value=date(1970, 1, 1), max_value=date.today(), key="start")
     end = st.date_input("End date", min_value=date(1970, 1, 1), max_value=date.today(), key="end")
     if start >= end:
         st.warning("The start date must be before the end date.")
-    initial = st.number_input(f"Initial investment ({base_ccy})", min_value=0.0, step=100.0, key="initial")
-    monthly = st.number_input(f"Monthly deposit ({base_ccy})", min_value=0.0, step=50.0, key="monthly",
-                              help="Invested on the first trading day of each month, split by target weights.")
+    c_init, c_month = st.columns(2)
+    initial = c_init.number_input(f"Initial ({base_ccy})", min_value=0.0, step=100.0, key="initial")
+    monthly = c_month.number_input(f"Monthly ({base_ccy})", min_value=0.0, step=50.0, key="monthly",
+                                   help="Invested on the first trading day of each month, split by target weights.")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")
-    rebalance = st.selectbox("Rebalance to target", list(engine.REBALANCE_RULES.keys()), key="rebalance",
+    # four options don't fit on one line in the sidebar, so a dropdown rather than buttons
+    rebalance = st.selectbox("Rebalance to target", list(engine.REBALANCE_RULES), key="rebalance",
                              help="Trading 212 pies don't rebalance automatically, so 'Never' matches them.")
-    before_listing = st.radio("Assets younger than the start date", list(engine.BEFORE_LISTING),
+    before_listing = st.radio("Assets that list later", list(engine.BEFORE_LISTING),
                               format_func=engine.BEFORE_LISTING.get, key="before_listing",
                               help="If one ETF launched later (e.g. in 2025), 'wait' shortens the whole backtest. "
                                    "'Cash' keeps the full period and buys that ETF once it lists.")
 
-    st.divider()
-    st.subheader("Example pies")
-    examples = storage.list_examples()
-    if examples:
-        ex_names = ["-- Select an example pie --"] + [ex["name"] for ex in examples]
-        selected_ex_idx = st.selectbox("Load example pie", range(len(ex_names)),
-                                       format_func=lambda i: ex_names[i], label_visibility="collapsed")
-        if selected_ex_idx > 0 and st.button("Load example", width="stretch"):
-            load_pie(examples[selected_ex_idx - 1])
-            st.rerun()
+pie_data_raw = pie_payload() if st.session_state.pie else None
+examples = storage.list_examples()
 
+with pies_box:
     st.divider()
-    st.subheader("My saved pies")
-    if st.session_state.pie and shared_storage and not user_id:
-        st.caption("Sign in to save pies.")
-    elif st.session_state.pie:
-        pie_name_input = st.text_input("Pie name", key="save_pie_name_input")
-        is_pub = st.checkbox("Make public", value=False, key="save_pie_pub_cb")
-        if st.button("Save pie to account/storage", type="primary", width="stretch"):
+    with st.expander("Saved pies"):
+        saved_pies = active_storage.list_pies(user_id=user_id)
+        if saved_pies:
+            def is_mine(p):
+                return not shared_storage or p.get("owner_id") == user_id
+
+            sp_names = [f"{p['name']} ({len(p['assets'])} assets)" + ("" if is_mine(p) else " · public")
+                        for p in saved_pies]
+            sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i],
+                                      label_visibility="collapsed")
+            target_sp = saved_pies[sel_sp_idx]
+            c_load, c_del = st.columns(2)
+            if c_load.button("Load saved pie", width="stretch"):
+                load_pie(target_sp)
+                st.rerun()
+            if is_mine(target_sp) and c_del.button("Delete pie", width="stretch"):
+                if active_storage.delete_pie(target_sp["id"], user_id=user_id):
+                    flash("success", f"Deleted pie '{target_sp['name']}'.")
+                    st.rerun()
+                st.error(f"Could not delete pie '{target_sp['name']}'.")
+        else:
+            st.caption("No saved pies yet. Use Save at the top to keep a pie.")
+
+    with st.expander("Import / export JSON"):
+        if pie_data_raw:
             try:
-                saved = active_storage.save_pie(dict(pie_payload(pie_name_input), is_public=is_pub),
-                                                user_id=user_id)
-                flash("success", f"Saved pie '{saved['name']}'.")
+                norm_export = storage.normalize_pie(pie_data_raw)
+                norm_export.pop("id")  # a fresh id is assigned when the file is saved somewhere
+                pie_json = json.dumps(norm_export, indent=2)
+            except Exception:
+                pie_json = json.dumps(pie_data_raw, indent=2)
+        else:
+            pie_json = ""
+        st.download_button("Download pie (.json)", pie_json, file_name="my_pie.json", mime="application/json",
+                           disabled=not st.session_state.pie)
+        uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
+        if uploaded is not None and st.button("Load this pie"):
+            try:
+                uploaded.seek(0)
+                raw_content = json.load(uploaded)
+                is_valid, err = storage.validate_pie(raw_content)
+                if not is_valid:
+                    st.error(f"Invalid pie file: {err}")
+                else:
+                    load_pie(storage.normalize_pie(raw_content))
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Could not load pie file: {e}")
+
+# ---------------- header: title, settings summary, actions ----------------
+head, actions = st.columns([3, 2], vertical_alignment="bottom")
+head.title("Pie backtester")
+summary_slot = head.empty()  # filled once the results know the last price date
+with actions.container(horizontal=True, horizontal_alignment="right"):
+    with st.popover("Examples"):
+        for i, ex in enumerate(examples):
+            if st.button(ex["name"], key=f"ex_pop_{i}", width="stretch"):
+                load_pie(ex)
                 st.rerun()
-            except Exception as ex:
-                st.error(f"Failed to save pie: {ex}")
-
-    saved_pies = active_storage.list_pies(user_id=user_id)
-    if saved_pies:
-        def is_mine(p):
-            return not shared_storage or p.get("owner_id") == user_id
-
-        sp_names = [f"{p['name']} ({len(p['assets'])} assets)" + ("" if is_mine(p) else " · public")
-                    for p in saved_pies]
-        sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i], label_visibility="collapsed")
-        target_sp = saved_pies[sel_sp_idx]
-        c_load, c_del = st.columns(2)
-        if c_load.button("Load saved pie", width="stretch"):
-            load_pie(target_sp)
-            st.rerun()
-        if is_mine(target_sp) and c_del.button("Delete pie", width="stretch"):
-            if active_storage.delete_pie(target_sp["id"], user_id=user_id):
-                flash("success", f"Deleted pie '{target_sp['name']}'.")
-                st.rerun()
-            st.error(f"Could not delete pie '{target_sp['name']}'.")
-    elif not st.session_state.pie:
-        st.caption("No saved pies yet. Build a pie to save it.")
-
-    st.divider()
-    st.subheader("Export / Import JSON")
-    pie_data_raw = pie_payload(st.session_state.save_pie_name_input) if st.session_state.pie else None
-    if pie_data_raw:
+    can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
+    if st.button("Save", key="save_open", disabled=not can_save,
+                 help=None if can_save or not st.session_state.pie else "Sign in to save pies."):
+        save_dialog()
+    with st.popover("Share", disabled=not pie_data_raw):
         try:
-            norm_export = storage.normalize_pie(pie_data_raw)
-            norm_export.pop("id")  # a fresh id is assigned when the file is saved somewhere
-            pie_json = json.dumps(norm_export, indent=2)
-        except Exception:
-            pie_json = json.dumps(pie_data_raw, indent=2)
-    else:
-        pie_json = ""
-
-    st.download_button("Download pie (.json)", pie_json, file_name="my_pie.json", mime="application/json",
-                       disabled=not st.session_state.pie)
-    uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
-    if uploaded is not None and st.button("Load this pie"):
-        try:
-            uploaded.seek(0)
-            raw_content = json.load(uploaded)
-            is_valid, err = storage.validate_pie(raw_content)
-            if not is_valid:
-                st.error(f"Invalid pie file: {err}")
-            else:
-                load_pie(storage.normalize_pie(raw_content))
-                st.rerun()
-        except Exception as e:
-            st.error(f"Could not load pie file: {e}")
-
-    if pie_data_raw:
-        st.divider()
-        st.subheader("Share pie link")
-        try:
+            if not pie_data_raw:
+                raise ValueError("build a pie first")
             encoded_param = sharing.encode_pie_to_query_param(pie_data_raw)
             if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
-                st.warning("Pie configuration is too large for a URL share link. Please use 'Download pie (.json)' instead.")
+                st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
             else:
                 st.code(f"{st.context.url or ''}?pie={encoded_param}", language=None, wrap_lines=True)
                 st.caption("Copy this link to share your pie and its settings.")
         except Exception as e:
             st.caption(f"Cannot generate share link: {e}")
 
-# ---------------- main: build the pie ----------------
-st.title("🥧 Pie backtester")
-st.caption("Pick ETFs and stocks, set their weights, and see how the pie would have grown. "
-           "Prices come from Yahoo Finance and include reinvested dividends. "
-           "**Not financial advice.** Past performance is not indicative of future returns.")
 if "flash" in st.session_state:
     _kind, _msg = st.session_state.pop("flash")
     getattr(st, _kind)(_msg)
 
-OWN = f"{st.session_state.save_pie_name_input or 'My Pie'} (editing)"  # the pie in the table
+OWN = f"{st.session_state.pie_name or 'My Pie'} (editing)"  # the pie in the table
 
 left, right = st.columns([3, 2], gap="large")
 
 with left:
+    if not st.session_state.pie:
+        # empty page: one click to a full result
+        st.markdown("**Start from an example**")
+        with st.container(horizontal=True):
+            for i, ex in enumerate(examples):
+                if st.button(ex["name"], key=f"ex_pill_{i}"):
+                    load_pie(ex)
+                    st.rerun()
+        st.caption("or build your own:")
     st.subheader("Add assets")
     q = st.text_input("Search by name, ticker or ISIN",
                       placeholder="e.g. IE00BK5BQT80, Vanguard FTSE All-World, AAPL")
@@ -466,7 +508,7 @@ with left:
             st.rerun()
         if c4.button("Compare a copy", width="stretch", disabled=abs(total_w - 100) > 0.01,
                      help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
-            add_to_comparison({"name": st.session_state.save_pie_name_input, "assets": [
+            add_to_comparison({"name": st.session_state.pie_name, "assets": [
                 {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
             st.rerun()
 
@@ -542,6 +584,14 @@ if settings_ok and entries:
                     st.warning(f"'{name}' is left out: {e}")
 
 own = results.get(OWN)
+
+# one line that says what every number below assumes
+summary = (f"{money(initial, base_ccy, True)} + {money(monthly, base_ccy, True)}/month · "
+           f"{start:%Y-%m} to {end:%Y-%m} · rebalance {rebalance.lower()} · {base_ccy}")
+if results:
+    last_price = max(r["total"].index[-1] for r in results.values())
+    summary += f" · prices to {last_price:%d %b %Y}"
+summary_slot.caption(summary.replace("$", "\\$"))  # a bare $ would start Markdown maths
 if results:
     st.divider()
     if own:
