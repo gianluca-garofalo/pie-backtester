@@ -94,3 +94,36 @@ def test_load_prices_retries_tickers_yahoo_dropped(monkeypatch):
     prices, _ = engine.load_prices(["AAPL", "MSFT"], "2023-01-02", "2023-01-04", "USD")
     assert list(prices.columns) == ["AAPL", "MSFT"]
     assert calls == [["AAPL", "MSFT"], ["MSFT"]]
+
+
+def _prices():
+    dates = pd.date_range("2023-01-02", periods=6, freq="D")
+    return pd.DataFrame({
+        "OLD": [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
+        "NEW": [float("nan")] * 3 + [20.0, 22.0, 24.0],   # lists on day 4
+        "FLAT": [5.0] * 6,
+    }, index=dates)
+
+
+def test_compare_pies_starts_every_pie_on_the_latest_common_date():
+    res, start = engine.compare_pies(_prices(), {"A": {"OLD": 100}, "B": {"OLD": 50, "NEW": 50}},
+                                     "2023-01-02", initial=1000)
+    assert start == pd.Timestamp("2023-01-05")
+    assert res["A"]["total"].index[0] == res["B"]["total"].index[0] == start
+    # A is rebought on the common start, not carried over from the earlier run
+    assert res["A"]["total"].iloc[0] == pytest.approx(1000)
+
+
+def test_compare_pies_keeps_the_requested_start_when_everything_has_prices():
+    res, start = engine.compare_pies(_prices(), {"A": {"OLD": 100}, "B": {"FLAT": 100}}, "2023-01-02", initial=1000)
+    assert start == pd.Timestamp("2023-01-02")
+    assert res["B"]["total"].iloc[-1] == pytest.approx(1000)
+
+
+def test_comparison_table_has_one_row_per_pie():
+    res, _ = engine.compare_pies(_prices(), {"Up": {"OLD": 100}, "Flat": {"FLAT": 100}}, "2023-01-02", initial=1000)
+    table = engine.comparison_table(res)
+    assert list(table["Pie"]) == ["Up", "Flat"]
+    assert table.loc[0, "Final value"] == pytest.approx(1500)
+    assert table.loc[0, "Return %"] == pytest.approx(50)
+    assert table.loc[1, "Max drawdown %"] == pytest.approx(0)

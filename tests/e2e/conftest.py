@@ -121,11 +121,11 @@ class App:
     def grid(self):
         return self.page.get_by_test_id("stDataFrame").first
 
-    def rows(self):
-        """Non-empty rows as [ticker, weight, name]; the accessible table fills in after a rerun."""
+    def rows(self, grid=None):
+        """Non-empty rows of a table (default: the pie editor); the accessible table fills in after a rerun."""
         for _ in range(40):
             out = []
-            for row in self.grid.locator("tbody [role=row]").all():
+            for row in (grid or self.grid).locator("tbody [role=row]").all():
                 cells = [c.inner_text().strip() for c in row.locator("[role=gridcell]").all()]
                 if any(cells):
                     out.append(cells)

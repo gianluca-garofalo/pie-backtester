@@ -27,6 +27,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Keep logic that can be tested out of `app.py` and in `engine.py`, `storage.py` or `sharing.py`, with unit tests.
 - Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`, `save_pie_name_input`). Change them only through `load_pie()`, which applies them on the next rerun through `pending_settings`.
 - Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
+- Load prices with `prices_for()`, which caches each ticker separately, so the single backtest and the comparison reuse downloads. Comparisons go through `engine.compare_pies`, which starts every pie on the latest common date, and `cached_comparison`, so unrelated reruns don't re-simulate.
 - Sign-in and storage: `st.login` (Google) identifies users as `google:<sub>`. Supabase is a database used only from the server with the service key, so `SupabaseStorageBackend` must filter every query by `owner_id`; RLS is not the safety net. Never offer the guest account when storage is shared.
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
 - Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md`. Update the ledger before pausing.

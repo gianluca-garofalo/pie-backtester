@@ -30,6 +30,10 @@ if "fix_report" not in st.session_state:
     st.session_state.fix_report = None
 if "verified_tickers" not in st.session_state:
     st.session_state.verified_tickers = set()  # bare tickers Yahoo knows as-is, e.g. AAPL
+if "compare" not in st.session_state:
+    st.session_state.compare = []  # other pies to compare with yours: {"name", "weights": {ticker: %}}
+
+MAX_COMPARED = 5  # pies in one comparison, including yours
 
 CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"]
 # sidebar settings, keyed so a loaded pie can set them
@@ -149,8 +153,61 @@ def fix_tickers(ccy):
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def cached_prices(tickers, start, end, base):
-    return engine.load_prices(list(tickers), start, end, base)
+def cached_ticker_prices(ticker, start, end, base):
+    return engine.load_prices([ticker], start, end, base)
+
+
+def prices_for(tickers, start, end, base):
+    """Prices in the base currency, cached per ticker so adding a pie only downloads its new tickers."""
+    frames, currencies = [], {}
+    for t in dict.fromkeys(tickers):
+        prices, info = cached_ticker_prices(t, start, end, base)
+        frames.append(prices)
+        currencies.update(info["currencies"])
+    # exchanges trade on different days; carry each price forward like a single download would
+    return pd.concat(frames, axis=1).sort_index().ffill(), {"currencies": currencies}
+
+
+def add_to_comparison(cfg):
+    """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
+    others = st.session_state.compare
+    if len(others) >= MAX_COMPARED - 1:
+        flash("warning", f"You can compare up to {MAX_COMPARED} pies, including yours. Remove one first.")
+        return
+    weights = {}
+    for a in cfg.get("assets", []):
+        t = str(a["ticker"]).strip().upper()
+        if is_bare(t) and (hits := cached_resolve(t, st.session_state.base_ccy)):
+            if hits[0]["symbol"].upper() == t:
+                st.session_state.verified_tickers.add(t)
+            t = hits[0]["symbol"]
+        weights[t] = weights.get(t, 0.0) + float(a["weight"])
+    taken = {"Your pie"} | {e["name"] for e in others}
+    name, n = cfg.get("name") or "Pie", 2
+    while name in taken:
+        name, n = f"{cfg.get('name') or 'Pie'} ({n})", n + 1
+    others.append({"name": name, "weights": {t: w for t, w in weights.items() if w > 0}})
+    flash("success", f"Added '{name}' to the comparison.")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_comparison(pies, start, end, base, initial, monthly, rebalance, before_listing):
+    """pies: ((name, ((ticker, weight), ...)), ...). Pies whose prices can't be loaded are left out."""
+    usable, skipped = {}, {}
+    for name, assets in pies:
+        try:
+            prices_for([t for t, _ in assets], start, end, base)
+            usable[name] = dict(assets)
+        except Exception as e:
+            skipped[name] = str(e)
+    if len(usable) < 2:
+        return None, None, {}, skipped
+    tickers = list(dict.fromkeys(t for w in usable.values() for t in w))
+    prices, _ = prices_for(tickers, start, end, base)
+    results, common = engine.compare_pies(prices, usable, start, initial, monthly, rebalance, before_listing)
+    first = engine.first_price_dates(prices[tickers], start).dropna()
+    late = {t: d.date() for t, d in first.items() if d.date() > start + pd.Timedelta(days=7)}
+    return results, common, late, skipped
 
 
 def pie_payload(name):
@@ -224,6 +281,9 @@ with st.sidebar:
         if selected_ex_idx > 0 and st.button("Load example", width="stretch"):
             load_pie(examples[selected_ex_idx - 1])
             st.rerun()
+        if selected_ex_idx > 0 and st.button("Add to comparison", key="cmp_example", width="stretch"):
+            add_to_comparison(examples[selected_ex_idx - 1])
+            st.rerun()
 
     st.divider()
     st.subheader("My saved pies")
@@ -259,6 +319,9 @@ with st.sidebar:
                 flash("success", f"Deleted pie '{target_sp['name']}'.")
                 st.rerun()
             st.error(f"Could not delete pie '{target_sp['name']}'.")
+        if st.button("Add to comparison", key="cmp_saved", width="stretch"):
+            add_to_comparison(target_sp)
+            st.rerun()
     elif not st.session_state.pie:
         st.caption("No saved pies yet. Build a pie to save it.")
 
@@ -278,17 +341,22 @@ with st.sidebar:
     st.download_button("Download pie (.json)", pie_json, file_name="my_pie.json", mime="application/json",
                        disabled=not st.session_state.pie)
     uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
-    if uploaded is not None and st.button("Load this pie"):
-        try:
-            raw_content = json.load(uploaded)
-            is_valid, err = storage.validate_pie(raw_content)
-            if not is_valid:
-                st.error(f"Invalid pie file: {err}")
-            else:
-                load_pie(storage.normalize_pie(raw_content))
-                st.rerun()
-        except Exception as e:
-            st.error(f"Could not load pie file: {e}")
+    if uploaded is not None:
+        c_up_load, c_up_cmp = st.columns(2)
+        up_load = c_up_load.button("Load this pie", width="stretch")
+        up_cmp = c_up_cmp.button("Add to comparison", key="cmp_upload", width="stretch")
+        if up_load or up_cmp:
+            try:
+                uploaded.seek(0)
+                raw_content = json.load(uploaded)
+                is_valid, err = storage.validate_pie(raw_content)
+                if not is_valid:
+                    st.error(f"Invalid pie file: {err}")
+                else:
+                    (load_pie if up_load else add_to_comparison)(storage.normalize_pie(raw_content))
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Could not load pie file: {e}")
 
     if pie_data_raw:
         st.divider()
@@ -374,6 +442,11 @@ with left:
             st.session_state.pie, st.session_state.fix_report = [], None
             pie_changed()
             st.rerun()
+        if st.button("Add a copy to the comparison", disabled=abs(total_w - 100) > 0.01,
+                     help="Keeps this version of your pie, so you can change it and compare the two."):
+            add_to_comparison({"name": st.session_state.save_pie_name_input, "assets": [
+                {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
+            st.rerun()
 
         if bare:
             st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
@@ -434,7 +507,7 @@ if st.session_state.pop("autorun", False):
     names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}
     try:
         with st.spinner("Loading prices and simulating…"):
-            prices, info = cached_prices(tickers, start, end, base_ccy)
+            prices, info = prices_for(tickers, start, end, base_ccy)
             first_valid = engine.first_price_dates(prices[list(tickers)], start)
             res = engine.simulate_pie(prices, weights, start, initial, monthly, rebalance, before_listing)
         st.session_state.results = dict(res=res, weights=weights, names=names, info=info,
@@ -515,3 +588,70 @@ if R:
 
     st.caption("Assumes fractional shares, no fees or taxes, and dividends reinvested. "
                "Disclaimer: Not financial advice. Past performance doesn't predict future returns.")
+
+# ---------------- comparison ----------------
+if st.session_state.compare:
+    st.divider()
+    head, clear = st.columns([4, 1])
+    head.subheader("Comparison")
+    if clear.button("Clear comparison", width="stretch"):
+        st.session_state.compare = []
+        st.rerun()
+
+    own_ok = ready and not any(is_bare(t) for t in tickers)
+    pies = ([("Your pie", tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if own_ok else []) + \
+        [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
+    chips = st.columns(MAX_COMPARED)
+    for i, e in enumerate(st.session_state.compare):
+        if chips[i].button(f"✕ {e['name']}", key=f"cmp_remove_{i}", help="Remove from the comparison"):
+            st.session_state.compare.pop(i)
+            st.rerun()
+    if st.session_state.pie and not own_ok:
+        st.caption("Your pie isn't included until it's ready to run (weights add up to 100%, tickers fixed).")
+
+    if len(pies) < 2:
+        st.info("Add another pie to compare: use 'Add to comparison' under the example or saved pies in the sidebar.")
+    elif not (start < end and (initial > 0 or monthly > 0)):
+        st.info("Fix the settings in the sidebar to see the comparison.")
+    else:
+        try:
+            with st.spinner("Loading prices and comparing…"):
+                cmp, common, late, skipped = cached_comparison(tuple(pies), start, end, base_ccy, initial, monthly,
+                                                               rebalance, before_listing)
+        except Exception as e:
+            cmp, skipped = None, {}
+            st.error(f"Comparison failed: {e}")
+        for name, err in skipped.items():
+            st.warning(f"'{name}' is left out: {err}")
+        if cmp:
+            if common.date() > start + pd.Timedelta(days=7):
+                st.info(f"All pies are compared from {common.date()}, the first day every pie has prices. "
+                        "Assets that list later: " + ", ".join(f"{t} ({d})" for t, d in late.items()) + ".")
+            fig = go.Figure()
+            for i, (name, res) in enumerate(cmp.items()):
+                fig.add_trace(go.Scatter(x=res["total"].index, y=res["total"], name=name,
+                                         line=dict(color=PALETTE[i % len(PALETTE)], width=2)))
+            any_res = next(iter(cmp.values()))
+            fig.add_trace(go.Scatter(x=any_res["invested"].index, y=any_res["invested"], name="Invested",
+                                     line=dict(color="#888", dash="dot", shape="hv")))
+            fig.update_layout(height=420, hovermode="x unified", yaxis_title=base_ccy,
+                              margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.1))
+            st.plotly_chart(fig)
+
+            fig = go.Figure()
+            for i, (name, res) in enumerate(cmp.items()):
+                dd = (res["twr"] / res["twr"].cummax() - 1) * 100
+                fig.add_trace(go.Scatter(x=dd.index, y=dd, name=name, line=dict(color=PALETTE[i % len(PALETTE)])))
+            fig.update_layout(height=320, hovermode="x unified", yaxis_title="% below previous peak",
+                              margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.15))
+            st.plotly_chart(fig)
+
+            st.dataframe(engine.comparison_table(cmp), hide_index=True, width="stretch", column_config={
+                "Final value": st.column_config.NumberColumn(f"Final value ({base_ccy})", format="%.2f"),
+                "Invested": st.column_config.NumberColumn(f"Invested ({base_ccy})", format="%.2f"),
+                "Return %": st.column_config.NumberColumn("Return % (time-weighted)", format="%.1f"),
+                "CAGR %": st.column_config.NumberColumn(format="%.1f"),
+                "Max drawdown %": st.column_config.NumberColumn(format="%.1f"),
+                "Volatility %": st.column_config.NumberColumn(format="%.1f"),
+            })
+            st.caption("All pies use the sidebar settings: same currency, dates, deposits and rebalancing.")
