@@ -8,9 +8,9 @@ A Streamlit app that backtests a Trading 212-style pie of ETFs and stocks using 
 - `engine.py`: data loading (yfinance), ticker resolution, simulation, metrics. Contains no UI code.
 - `storage.py`: pie schema (`validate_pie` / `normalize_pie`), local JSON backend, Supabase backend
 - `sharing.py`: `?pie=` share-link encoding (zlib + urlsafe base64)
-- `auth.py`: Streamlit native Google auth plus a local guest account
+- `auth.py`: Streamlit native Google auth, plus a local guest account (local storage only)
 - `examples/*.json`: example pies, including their settings (currency, start, monthly, rebalance)
-- `tests/`: unit tests. `tests/e2e/`: Playwright browser tests.
+- `tests/`: unit tests (`test_app.py` runs `app.py` in-process with Streamlit's `AppTest`). `tests/e2e/`: Playwright browser tests.
 
 ## Commands
 
@@ -27,6 +27,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Keep logic that can be tested out of `app.py` and in `engine.py`, `storage.py` or `sharing.py`, with unit tests.
 - Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`, `save_pie_name_input`). Change them only through `load_pie()`, which applies them on the next rerun through `pending_settings`.
 - Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
+- Sign-in and storage: `st.login` (Google) identifies users as `google:<sub>`. Supabase is a database used only from the server with the service key, so `SupabaseStorageBackend` must filter every query by `owner_id`; RLS is not the safety net. Never offer the guest account when storage is shared.
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
 - Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md`. Update the ledger before pausing.
 

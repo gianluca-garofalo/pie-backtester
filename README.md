@@ -29,15 +29,15 @@ Open http://localhost:8501 in your browser.
 
 ## Setup Supabase & Authentication (Optional)
 
-To enable cloud storage and Google authentication, create `.streamlit/secrets.toml`:
+Sign-in uses Streamlit's built-in Google login. Supabase is only a database: the Streamlit server talks to it with the service key and limits every query to the signed-in user. Create `.streamlit/secrets.toml`:
 
 ```toml
 SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_KEY = "your-supabase-anon-key"
+SUPABASE_SERVICE_KEY = "your-supabase-service-role-key"  # server-side only, never put it in client code
 
 [auth]
-redirect_uri = "http://localhost:8501/oauth2callback"
-cookie_secret = "your-random-cookie-secret-key"
+redirect_uri = "http://localhost:8501/oauth2callback"  # your deployed URL + /oauth2callback in production
+cookie_secret = "a-long-random-string"
 
 [auth.google]
 client_id = "your-google-client-id"
@@ -45,9 +45,15 @@ client_secret = "your-google-client-secret"
 server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
 ```
 
-Then run `schema.sql` in your Supabase SQL Editor to set up the `pies` table and Row Level Security (RLS) policies.
+1. In Google Cloud Console, create an OAuth client of type "Web application" and add the `redirect_uri` above as an authorized redirect URI.
+2. Run `schema.sql` in the Supabase SQL Editor. It creates the `pies` table, or upgrades the earlier one, with row-level security on and no policies, so the public anon key can't read or write pies.
 
-If secrets are not provided, the app runs out-of-the-box in local storage mode using `saved_pies.json`.
+With Supabase configured:
+- Visitors who aren't signed in can browse and load public pies, but can't save.
+- Signed-in users save their own pies, see their own and public pies, and can delete only their own.
+- The local guest account is turned off, because every guest would share one account.
+
+Without these secrets, the app runs in local storage mode using `saved_pies.json`, with an optional local guest account.
 
 ## Run Tests
 

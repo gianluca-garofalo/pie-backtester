@@ -100,15 +100,3 @@ def test_normalize_pie_null_name_falls_back_to_ticker():
     norm = normalize_pie({"assets": [{"ticker": "vwce.de", "weight": 100.0, "name": None}]})
     assert norm["assets"][0]["name"] == "VWCE.DE"
 
-
-def test_supabase_save_raises_when_request_is_rejected(monkeypatch):
-    import storage
-
-    class Resp:
-        status_code = 401
-        text = '{"message":"new row violates row-level security policy"}'
-
-    monkeypatch.setattr(storage.requests, "post", lambda *a, **k: Resp())
-    backend = storage.SupabaseStorageBackend(url="https://x.supabase.co", key="anon")
-    with pytest.raises(RuntimeError, match="401"):
-        backend.save_pie({"assets": [{"ticker": "VWCE.DE", "weight": 100.0}]})

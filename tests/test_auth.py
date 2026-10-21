@@ -31,7 +31,7 @@ def test_get_current_user_st_user():
     assert user is not None
     assert user["email"] == "user@example.com"
     assert user["name"] == "Google User"
-    assert user["id"] == "google_sub_123"
+    assert user["id"] == "google:google_sub_123"
     delattr(st, "user")
 
 

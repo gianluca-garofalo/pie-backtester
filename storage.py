@@ -202,121 +202,101 @@ MAX_PIES_PER_USER = 20
 MAX_ASSETS_PER_PIE = 30
 
 
+def _quote(value: str) -> str:
+    """Quote a value for a PostgREST or=(...) list, where , . : ( ) are syntax."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 class SupabaseStorageBackend:
-    def __init__(self, url: str, key: str, access_token: str | None = None):
-        self.url = url.rstrip("/")
+    """Supabase used as a plain database from the Streamlit server.
+
+    Requests use the service key, which bypasses row-level security, so this class
+    is what keeps users apart: every read, write and delete is filtered by owner.
+    Owners are app user ids (e.g. "google:<sub>"), not Supabase Auth users.
+    """
+
+    def __init__(self, url: str, key: str):
+        self.table = f"{url.rstrip('/')}/rest/v1/pies"
         self.key = key
-        self.access_token = access_token or key
 
     def _headers(self) -> dict[str, str]:
         return {
             "apikey": self.key,
-            "Authorization": f"Bearer {self.access_token}",
+            "Authorization": f"Bearer {self.key}",
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
 
-    def list_pies(self, user_id: str | None = None) -> list[dict[str, Any]]:
+    @staticmethod
+    def _from_row(row: dict[str, Any]) -> dict[str, Any]:
+        config = dict(row.get("config") or {})
+        config.update(id=row.get("id"), name=row.get("name", config.get("name")),
+                      is_public=row.get("is_public", False))
+        pie = normalize_pie(config)
+        pie["owner_id"] = row.get("owner_id")
+        return pie
+
+    def _select(self, params: dict[str, str]) -> list[dict[str, Any]]:
         try:
-            url = f"{self.url}/rest/v1/pies?select=*"
-            if user_id:
-                url += f"&or=(is_public.eq.true,owner_id.eq.{user_id})"
-            resp = requests.get(
-                url,
-                headers=self._headers(),
-                timeout=5
-            )
+            resp = requests.get(self.table, params={"select": "*", **params}, headers=self._headers(), timeout=5)
             if resp.status_code == 200:
-                rows = resp.json()
-                out = []
-                for row in rows:
-                    config = row.get("config", {})
-                    config["id"] = row.get("id")
-                    config["name"] = row.get("name", config.get("name"))
-                    config["is_public"] = row.get("is_public", False)
-                    config["owner_id"] = row.get("owner_id")
-                    out.append(normalize_pie(config))
-                return out
+                return [self._from_row(r) for r in resp.json()]
         except Exception:
             pass
         return []
 
+    @staticmethod
+    def _visible_to(user_id: str | None) -> dict[str, str]:
+        if not user_id:
+            return {"is_public": "eq.true"}
+        return {"or": f"(is_public.eq.true,owner_id.eq.{_quote(user_id)})"}
+
+    def list_pies(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        return self._select(self._visible_to(user_id))
+
     def get_pie(self, pie_id: str, user_id: str | None = None) -> dict[str, Any] | None:
-        try:
-            resp = requests.get(
-                f"{self.url}/rest/v1/pies?id=eq.{pie_id}&select=*",
-                headers=self._headers(),
-                timeout=5
-            )
-            if resp.status_code == 200:
-                rows = resp.json()
-                if rows:
-                    row = rows[0]
-                    config = row.get("config", {})
-                    config["id"] = row.get("id")
-                    config["name"] = row.get("name", config.get("name"))
-                    config["is_public"] = row.get("is_public", False)
-                    config["owner_id"] = row.get("owner_id")
-                    return normalize_pie(config)
-        except Exception:
-            pass
-        return None
+        rows = self._select({"id": f"eq.{pie_id}", **self._visible_to(user_id)})
+        return rows[0] if rows else None
 
     def save_pie(self, pie_data: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        if not user_id:
+            raise ValueError("Sign in to save pies.")
         normalized = normalize_pie(pie_data)
         if len(normalized["assets"]) > MAX_ASSETS_PER_PIE:
             raise ValueError(f"Pie exceeds maximum allowed assets ({MAX_ASSETS_PER_PIE}).")
-
-        if user_id:
-            existing_user_pies = [p for p in self.list_pies(user_id) if p.get("owner_id") == user_id]
-            if len(existing_user_pies) >= MAX_PIES_PER_USER and not any(p["id"] == normalized["id"] for p in existing_user_pies):
-                raise ValueError(f"Maximum pie limit ({MAX_PIES_PER_USER}) reached for user.")
+        if len(self._select({"owner_id": f"eq.{user_id}"})) >= MAX_PIES_PER_USER:
+            raise ValueError(f"Maximum pie limit ({MAX_PIES_PER_USER}) reached. Delete a pie to save a new one.")
 
         payload = {
             "id": normalized["id"],
+            "owner_id": user_id,
             "name": normalized["name"],
             "is_public": normalized["is_public"],
             "is_example": normalized["is_example"],
             "config": normalized,
         }
-        if user_id:
-            payload["owner_id"] = user_id
-
         try:
-            resp = requests.post(
-                f"{self.url}/rest/v1/pies",
-                headers=self._headers(),
-                json=payload,
-                timeout=5
-            )
+            resp = requests.post(self.table, json=payload, headers=self._headers(), timeout=5)
         except Exception as e:
             raise RuntimeError(f"Failed to save pie to Supabase: {e}")
         if resp.status_code not in (200, 201):
             raise RuntimeError(f"Failed to save pie to Supabase: HTTP {resp.status_code} {resp.text[:200]}")
         rows = resp.json()
-        if rows:
-            cfg = rows[0].get("config", {})
-            cfg["id"] = rows[0].get("id")
-            return normalize_pie(cfg)
-        return normalized
+        return self._from_row(rows[0]) if rows else normalized
 
     def delete_pie(self, pie_id: str, user_id: str | None = None) -> bool:
+        if not user_id:
+            return False
         try:
-            resp = requests.delete(
-                f"{self.url}/rest/v1/pies?id=eq.{pie_id}",
-                headers=self._headers(),
-                timeout=5
-            )
-            return resp.status_code in (200, 204)
+            resp = requests.delete(self.table, params={"id": f"eq.{pie_id}", "owner_id": f"eq.{user_id}"},
+                                   headers=self._headers(), timeout=5)
         except Exception:
             return False
+        # PostgREST answers 200 even when the filter matched nothing (someone else's pie)
+        return resp.status_code == 200 and bool(resp.json())
 
 
 def get_storage(backend_type: str | None = None, **kwargs) -> StorageBackend:
     if backend_type == "supabase" or (backend_type is None and kwargs.get("url") and kwargs.get("key")):
-        return SupabaseStorageBackend(
-            url=kwargs["url"],
-            key=kwargs["key"],
-            access_token=kwargs.get("access_token")
-        )
+        return SupabaseStorageBackend(url=kwargs["url"], key=kwargs["key"])
     return LocalStorageBackend(filepath=kwargs.get("filepath", LOCAL_STORAGE_FILE))

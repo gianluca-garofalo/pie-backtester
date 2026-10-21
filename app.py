@@ -176,16 +176,22 @@ def pie_payload(name):
 # Determine active storage backend
 try:
     supabase_url = st.secrets.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url")
-    supabase_key = st.secrets.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key")
+    # the server-side service key: the app itself scopes every query to the signed-in user
+    supabase_key = st.secrets.get("SUPABASE_SERVICE_KEY") or st.secrets.get("supabase", {}).get("service_key")
+    legacy_anon_key = bool(st.secrets.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key"))
 except Exception:
-    supabase_url = None
-    supabase_key = None
+    supabase_url = supabase_key = None
+    legacy_anon_key = False
 active_storage = storage.get_storage(url=supabase_url, key=supabase_key)
+shared_storage = isinstance(active_storage, storage.SupabaseStorageBackend)
 
 # ---------------- sidebar: settings ----------------
 with st.sidebar:
     st.header("Account & Storage")
-    current_user = auth.render_auth_ui()
+    if supabase_url and legacy_anon_key and not supabase_key:
+        st.warning("`SUPABASE_KEY` (the anon key) is no longer used. Set `SUPABASE_SERVICE_KEY` "
+                   "to store pies in Supabase (see README). Pies are saved on this machine for now.")
+    current_user = auth.render_auth_ui(allow_guest=not shared_storage)
     user_id = current_user.get("id") if current_user else None
 
     st.divider()
@@ -221,7 +227,9 @@ with st.sidebar:
 
     st.divider()
     st.subheader("My saved pies")
-    if st.session_state.pie:
+    if st.session_state.pie and shared_storage and not user_id:
+        st.caption("Sign in to save pies.")
+    elif st.session_state.pie:
         pie_name_input = st.text_input("Pie name", key="save_pie_name_input")
         is_pub = st.checkbox("Make public", value=False, key="save_pie_pub_cb")
         if st.button("Save pie to account/storage", type="primary", width="stretch"):
@@ -235,14 +243,18 @@ with st.sidebar:
 
     saved_pies = active_storage.list_pies(user_id=user_id)
     if saved_pies:
-        sp_names = [f"{p['name']} ({len(p['assets'])} assets)" for p in saved_pies]
+        def is_mine(p):
+            return not shared_storage or p.get("owner_id") == user_id
+
+        sp_names = [f"{p['name']} ({len(p['assets'])} assets)" + ("" if is_mine(p) else " · public")
+                    for p in saved_pies]
         sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i], label_visibility="collapsed")
+        target_sp = saved_pies[sel_sp_idx]
         c_load, c_del = st.columns(2)
         if c_load.button("Load saved pie", width="stretch"):
-            load_pie(saved_pies[sel_sp_idx])
+            load_pie(target_sp)
             st.rerun()
-        if c_del.button("Delete pie", width="stretch"):
-            target_sp = saved_pies[sel_sp_idx]
+        if is_mine(target_sp) and c_del.button("Delete pie", width="stretch"):
             if active_storage.delete_pie(target_sp["id"], user_id=user_id):
                 flash("success", f"Deleted pie '{target_sp['name']}'.")
                 st.rerun()

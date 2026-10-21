@@ -1,31 +1,28 @@
 -- Supabase Database Schema for Pie Backtester
+--
+-- The app reads and writes this table only from the Streamlit server, using the
+-- service key, and scopes every query to the signed-in user itself. owner_id is the
+-- app's user id ("google:<sub>" from Streamlit's Google sign-in), not a Supabase Auth user.
+-- Row-level security stays on with no policies, so the public anon key can do nothing.
 
 create table if not exists pies (
   id          uuid primary key default gen_random_uuid(),
-  owner_id    uuid references auth.users on delete cascade,
+  owner_id    text not null,
   name        text not null,
-  is_public   boolean default false,
-  is_example  boolean default false,
+  is_public   boolean not null default false,
+  is_example  boolean not null default false,
   config      jsonb not null,
   created_at  timestamptz default now()
 );
 
--- Row-Level Security (RLS)
+create index if not exists pies_owner_id_idx on pies (owner_id);
+
 alter table pies enable row level security;
 
--- Policies
+-- Upgrading from the earlier schema (owner_id uuid referencing auth.users, per-user policies)
 drop policy if exists "Public pies or owner read" on pies;
-create policy "Public pies or owner read" on pies
-  for select using (is_public = true or owner_id = auth.uid());
-
 drop policy if exists "Owner insert" on pies;
-create policy "Owner insert" on pies
-  for insert with check (owner_id = auth.uid());
-
 drop policy if exists "Owner update" on pies;
-create policy "Owner update" on pies
-  for update using (owner_id = auth.uid());
-
 drop policy if exists "Owner delete" on pies;
-create policy "Owner delete" on pies
-  for delete using (owner_id = auth.uid());
+alter table pies drop constraint if exists pies_owner_id_fkey;
+alter table pies alter column owner_id type text;
