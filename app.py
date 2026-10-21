@@ -214,7 +214,6 @@ def add_to_comparison(cfg):
     while name in taken:
         name, n = f"{cfg.get('name') or 'Pie'} ({n})", n + 1
     others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}})
-    flash("success", f"'{name}' is in the comparison. Remove it with ✕ if you don't need it.")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

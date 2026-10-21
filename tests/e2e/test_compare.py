@@ -10,7 +10,8 @@ def test_loading_another_pie_keeps_the_previous_one(app):
     expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
 
     app.load_example("60/40 Stocks & Bonds")
-    expect(app.page.get_by_text("'All-World ETF' is in the comparison")).to_be_visible()
+    expect(app.page.get_by_role("button", name="✕ All-World ETF")).to_be_visible()
+    expect(app.page.get_by_test_id("stAlert")).to_have_count(0)  # no banner about it
     assert [r[0] for r in comparison_rows(app)] == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
     assert app.metrics()  # tiles are for the pie being edited
 
