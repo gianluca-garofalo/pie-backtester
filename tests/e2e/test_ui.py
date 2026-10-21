@@ -10,7 +10,7 @@ EXAMPLES = {ex["name"]: ex for ex in list_examples()}
 
 def test_empty_page(app):
     expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_disabled()
+    expect(app.page.get_by_role("button", name="Run backtest")).to_have_count(0)  # results update by themselves
     expect(app.page.get_by_role("button", name="Download pie (.json)")).to_be_disabled()
 
 
@@ -25,7 +25,6 @@ def test_example_loads_settings_and_backtests(app, name):
     expect(app.page.get_by_role("spinbutton", name=f"Monthly deposit ({ex['currency']})")) \
         .to_have_value(f"{ex['monthly']:.2f}")
 
-    app.run_backtest()
     assert not [a for a in app.alerts() if "failed" in a.lower() or "couldn't" in a.lower()], app.alerts()
     metrics = app.metrics()
     assert set(metrics) == {f"Value ({ex['currency']})", f"Invested ({ex['currency']})", "Return (time-weighted)",
@@ -38,11 +37,21 @@ def test_example_loads_settings_and_backtests(app, name):
 
 def test_us_stocks_keep_their_us_listing(app):
     app.load_example("Tech Leaders")
-    expect(app.page.get_by_text("have no exchange suffix")).to_be_visible()
-    app.run_backtest()
+    # AAPL and MSFT are real listings, so they're confirmed silently and the backtest runs
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
     assert app.metrics()
     expect(app.page.get_by_text("have no exchange suffix")).to_have_count(0)
+
+
+def test_ticker_that_would_change_needs_fix_tickers(app):
+    app.page.get_by_text("Add a ticker directly").click()
+    app.page.get_by_label("Yahoo ticker").fill("vwra")
+    app.click("Add", exact=True)
+    expect(app.page.get_by_text("have no exchange suffix")).to_be_visible()
+    assert not app.metrics()  # no silent swap to another listing
+    app.click("Fix tickers")
+    assert app.tickers() == ["VWRA.L"]
+    assert app.metrics()
 
 
 def test_weight_column_is_visible_and_editable(app):
@@ -55,11 +64,11 @@ def test_weight_column_is_visible_and_editable(app):
     app.edit_weight(0, 70)
     assert float(app.rows()[0][1]) == 70
     expect(app.page.get_by_text("Weights add up to 110.00%")).to_be_visible()
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_disabled()
+    assert not app.metrics()
 
     app.click("Split evenly")
     assert [float(r[1]) for r in app.rows()] == [50, 50]
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_enabled()
+    assert app.metrics()  # back to 100%: results appear by themselves
 
 
 def test_add_asset_by_search_and_directly(app):
@@ -145,28 +154,27 @@ def test_dates_before_2010_are_allowed(app):
     app.set_date("Start date", "2005-03-01")
     app.page.get_by_text("Hold a not-yet-listed").click()
     app.wait()
-    app.run_backtest()
     assert app.metrics(), app.alerts()
     expect(app.page.get_by_role("heading", name="2005-03-01 to")).to_be_visible()
 
 
-def test_run_is_blocked_with_explanation(app):
+def test_results_wait_for_valid_settings(app):
     app.load_example("All-World ETF")
     app.set_number("Initial investment (EUR)", 0)
     app.set_number("Monthly deposit (EUR)", 0)
     expect(app.page.get_by_text("Set an initial investment or a monthly deposit.")).to_be_visible()
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_disabled()
+    assert not app.metrics()
 
     app.set_number("Monthly deposit (EUR)", 100)
     app.set_date("Start date", "2026-01-01")
     app.set_date("End date", "2025-01-01")
     expect(app.page.get_by_text("The start date must be before the end date.")).to_be_visible()
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_disabled()
+    assert not app.metrics()
 
     # examples have no end date, which means "up to date"
     app.load_example("All-World ETF")
     expect(app.page.get_by_text("The start date must be before the end date.")).to_have_count(0)
-    expect(app.page.get_by_role("button", name="Run backtest")).to_be_enabled()
+    assert app.metrics()
 
 
 def test_guest_account_without_google_config(app):

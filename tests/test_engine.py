@@ -105,25 +105,13 @@ def _prices():
     }, index=dates)
 
 
-def test_compare_pies_starts_every_pie_on_the_latest_common_date():
-    res, start = engine.compare_pies(_prices(), {"A": {"OLD": 100}, "B": {"OLD": 50, "NEW": 50}},
-                                     "2023-01-02", initial=1000)
-    assert start == pd.Timestamp("2023-01-05")
-    assert res["A"]["total"].index[0] == res["B"]["total"].index[0] == start
-    # A is rebought on the common start, not carried over from the earlier run
-    assert res["A"]["total"].iloc[0] == pytest.approx(1000)
-
-
-def test_compare_pies_keeps_the_requested_start_when_everything_has_prices():
-    res, start = engine.compare_pies(_prices(), {"A": {"OLD": 100}, "B": {"FLAT": 100}}, "2023-01-02", initial=1000)
-    assert start == pd.Timestamp("2023-01-02")
-    assert res["B"]["total"].iloc[-1] == pytest.approx(1000)
-
-
 def test_comparison_table_has_one_row_per_pie():
-    res, _ = engine.compare_pies(_prices(), {"Up": {"OLD": 100}, "Flat": {"FLAT": 100}}, "2023-01-02", initial=1000)
+    res = {name: engine.simulate_pie(_prices(), w, "2023-01-02", initial=1000)
+           for name, w in {"Up": {"OLD": 100}, "Flat": {"FLAT": 100}, "Late": {"NEW": 100}}.items()}
     table = engine.comparison_table(res)
-    assert list(table["Pie"]) == ["Up", "Flat"]
+    assert list(table["Pie"]) == ["Up", "Flat", "Late"]
+    # each pie starts when it has prices; the table shows from when
+    assert [str(d) for d in table["From"]] == ["2023-01-02", "2023-01-02", "2023-01-05"]
     assert table.loc[0, "Final value"] == pytest.approx(1500)
     assert table.loc[0, "Return %"] == pytest.approx(50)
     assert table.loc[1, "Max drawdown %"] == pytest.approx(0)

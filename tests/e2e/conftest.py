@@ -157,10 +157,6 @@ class App:
         self.page.keyboard.press("Enter")
         self.wait()
 
-    def run_backtest(self):
-        self.click("Run backtest")
-        self.wait()  # a ticker fix triggers one more rerun
-
     def metrics(self):
         out = {}
         for m in self.page.get_by_test_id("stMetric").all():

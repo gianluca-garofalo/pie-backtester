@@ -241,29 +241,13 @@ def metrics(res: dict) -> dict:
     }
 
 
-def compare_pies(prices: pd.DataFrame, pies: dict[str, dict[str, float]], start, initial: float,
-                 monthly: float = 0.0, rebalance: str = "Never",
-                 before_listing: str = "wait") -> tuple[dict[str, dict], pd.Timestamp]:
-    """Simulate several pies under the same settings, all starting on the same day.
-
-    That day is the latest of the pies' own start days, so no pie gets a head start
-    because the others hold assets that list later. Returns ({name: result}, start).
-    """
-    results = {name: simulate_pie(prices, w, start, initial, monthly, rebalance, before_listing)
-               for name, w in pies.items()}
-    common = max(r["total"].index[0] for r in results.values())
-    if any(r["total"].index[0] != common for r in results.values()):
-        results = {name: simulate_pie(prices, w, common, initial, monthly, rebalance, before_listing)
-                   for name, w in pies.items()}
-    return results, common
-
-
 def comparison_table(results: dict[str, dict]) -> pd.DataFrame:
     rows = []
     for name, res in results.items():
         m = metrics(res)
         rows.append({
             "Pie": name,
+            "From": res["total"].index[0].date(),
             "Final value": m["final_value"],
             "Invested": m["invested"],
             "Return %": m["twr_total"] * 100,
