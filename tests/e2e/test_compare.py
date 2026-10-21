@@ -27,7 +27,7 @@ def test_reloading_the_same_pie_does_not_duplicate_it(app):
 
 def test_snapshot_of_your_own_pie(app):
     app.load_example("Tech Leaders")
-    app.click("Add a copy to the comparison")
+    app.click("Duplicate")
     rows = comparison_rows(app)
     assert [r[0] for r in rows] == ["Tech Leaders (editing)", "Tech Leaders"]
     assert rows[0][1:] == rows[1][1:]  # an untouched copy performs exactly like your pie
@@ -65,3 +65,26 @@ def test_a_pie_with_later_assets_starts_later(app):
     app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
                    {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
     expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()
+
+
+def test_every_loaded_pie_can_be_removed(app):
+    # two examples loaded one after the other: both get a ✕, including the one being edited
+    app.load_example("All-World ETF")
+    app.load_example("60/40 Stocks & Bonds")
+    expect(app.page.get_by_role("button", name="✕ 60/40 Stocks & Bonds (editing)")).to_be_visible()
+    expect(app.page.get_by_role("button", name="✕ All-World ETF")).to_be_visible()
+
+    app.click("✕ 60/40 Stocks & Bonds (editing)")
+    # the other pie opens in the editor, keeping the sidebar settings
+    assert app.tickers() == ["VWCE.DE"]
+    expect(app.sidebar.get_by_label("Pie name")).to_have_value("All-World ETF")
+    expect(app.page.get_by_role("heading", name="Comparison")).to_have_count(0)
+    assert app.metrics()
+
+
+def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
+    app.load_example("All-World ETF")
+    app.load_example("60/40 Stocks & Bonds")
+    app.load_example("All-World ETF")
+    app.eventually(lambda: [r[0] for r in comparison_rows(app)],
+                   ["All-World ETF (editing)", "60/40 Stocks & Bonds"])

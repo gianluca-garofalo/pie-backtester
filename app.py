@@ -56,7 +56,9 @@ def load_pie(cfg):
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
     if previous and abs(sum(previous.values()) - 100) <= 0.01 and previous != loaded:
         add_to_comparison({"name": st.session_state.save_pie_name_input,
-                           "assets": [{"ticker": t, "weight": w} for t, w in previous.items()]})
+                           "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
+                                      for a in st.session_state.pie if a["Ticker"] in previous]})
+    st.session_state.compare = [e for e in st.session_state.compare if e["weights"] != loaded]
     st.session_state.pie = [
         {"Ticker": a["ticker"], "Name": a["name"], "Weight %": a["weight"]}
         for a in cfg.get("assets", [])
@@ -80,6 +82,19 @@ def load_pie(cfg):
             continue
         pending[key] = min(d, date.today())
     st.session_state.pending_settings = pending
+    pie_changed()
+
+
+def close_open_pie():
+    """✕ on the pie being edited: drop it and open the most recently compared pie instead."""
+    if not st.session_state.compare:
+        st.session_state.pie = []
+    else:
+        e = st.session_state.compare.pop()
+        st.session_state.pie = [{"Ticker": t, "Name": e.get("names", {}).get(t, t), "Weight %": w}
+                                for t, w in e["weights"].items()]
+        st.session_state.pending_settings = {"save_pie_name_input": e["name"]}
+    st.session_state.fix_report = None
     pie_changed()
 
 
@@ -181,14 +196,16 @@ def add_to_comparison(cfg):
         flash("warning", f"'{cfg.get('name') or 'Pie'}' wasn't kept: you can compare up to {MAX_COMPARED} "
                          "pies, including yours. Remove one with ✕ first.")
         return
-    weights = {}
+    weights, names = {}, {}
     for a in cfg.get("assets", []):
         t = str(a["ticker"]).strip().upper()
+        name = a.get("name") or t
         if is_bare(t) and (hits := cached_resolve(t, st.session_state.base_ccy)):
             if hits[0]["symbol"].upper() == t:
                 st.session_state.verified_tickers.add(t)
             t = hits[0]["symbol"]
         weights[t] = weights.get(t, 0.0) + float(a["weight"])
+        names.setdefault(t, name)
     weights = {t: w for t, w in weights.items() if w > 0}
     if any(e["weights"] == weights for e in others):
         return  # already compared
@@ -196,7 +213,7 @@ def add_to_comparison(cfg):
     name, n = cfg.get("name") or "Pie", 2
     while name in taken:
         name, n = f"{cfg.get('name') or 'Pie'} ({n})", n + 1
-    others.append({"name": name, "weights": weights})
+    others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}})
     flash("success", f"'{name}' is in the comparison. Remove it with ✕ if you don't need it.")
 
 
@@ -404,8 +421,14 @@ with left:
     if not st.session_state.pie:
         st.info("Your pie is empty. Search for an asset above to add the first slice.")
     else:
+        # The table starts from a snapshot taken when the pie was last changed by code. Passing the
+        # live pie instead would change the table's input after every edit, and Streamlit then
+        # drops the next edit (it came back on the second try).
+        if st.session_state.get("editor_base_version") != st.session_state.editor_version:
+            st.session_state.editor_base = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
+            st.session_state.editor_base_version = st.session_state.editor_version
         edited = st.data_editor(
-            pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"]),
+            st.session_state.editor_base,
             num_rows="dynamic", width="stretch", hide_index=True,
             # weights first and narrow, so long ETF names can't push them out of view
             column_order=["Ticker", "Weight %", "Name"],
@@ -428,7 +451,7 @@ with left:
             if hits and hits[0]["symbol"].upper() == t:
                 st.session_state.verified_tickers.add(t)
         bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns(4)
         if c1.button("Fix tickers", width="stretch", disabled=not bare, type="primary" if bare else "secondary",
                      help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):
             with st.spinner("Looking up tickers…"):
@@ -442,8 +465,8 @@ with left:
             st.session_state.pie, st.session_state.fix_report = [], None
             pie_changed()
             st.rerun()
-        if st.button("Add a copy to the comparison", disabled=abs(total_w - 100) > 0.01,
-                     help="Keeps this version of your pie, so you can change it and compare the two."):
+        if c4.button("Duplicate", width="stretch", disabled=abs(total_w - 100) > 0.01,
+                     help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
             add_to_comparison({"name": st.session_state.save_pie_name_input, "assets": [
                 {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
             st.rerun()
@@ -617,9 +640,13 @@ if st.session_state.compare:
         st.session_state.compare = []
         st.rerun()
     chips = st.columns(MAX_COMPARED)
-    for i, e in enumerate(st.session_state.compare):
-        if chips[i].button(f"✕ {e['name']}", key=f"cmp_remove_{i}", help="Remove from the comparison"):
-            st.session_state.compare.pop(i)
+    if st.session_state.pie and chips[0].button(f"✕ {OWN}", key="cmp_remove_open",
+                                                help="Remove this pie and open the last compared one"):
+        close_open_pie()
+        st.rerun()
+    for i, e in enumerate(st.session_state.compare, start=1 if st.session_state.pie else 0):
+        if chips[i].button(f"✕ {e['name']}", key=f"cmp_remove_{e['name']}", help="Remove from the comparison"):
+            st.session_state.compare.remove(e)
             st.rerun()
     if len(results) > 1:
         st.dataframe(engine.comparison_table(results), hide_index=True, width="stretch", column_config={

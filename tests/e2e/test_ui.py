@@ -183,3 +183,12 @@ def test_guest_account_without_google_config(app):
     expect(app.sidebar.get_by_text("Logged in as Local Guest")).to_be_visible()
     app.click("Log out", root=app.sidebar)
     expect(app.sidebar.get_by_role("button", name="Use Local Guest Account")).to_be_visible()
+
+
+def test_consecutive_weight_edits_all_stick(app):
+    # each edit used to change the table's input, so the next edit was dropped once
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 70)
+    app.edit_weight(1, 30)
+    assert [float(r[1]) for r in app.rows()] == [70, 30]
+    assert app.metrics()
