@@ -29,6 +29,8 @@ Open http://localhost:8501 in your browser.
 
 ## Setup Supabase & Authentication (Optional)
 
+For a full walkthrough, from creating the Google and Supabase accounts to deploying, see **[docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md)**.
+
 Sign-in uses Streamlit's built-in Google login. Supabase is only a database: the Streamlit server talks to it with the service key and limits every query to the signed-in user. Create `.streamlit/secrets.toml`:
 
 ```toml

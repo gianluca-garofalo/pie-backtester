@@ -110,3 +110,10 @@ def test_save_raises_when_supabase_rejects_it(db, calls):
     calls.replies += [Resp(rows=[]), Resp(401)]
     with pytest.raises(RuntimeError, match="401"):
         db.save_pie(PIE, user_id="google:123")
+
+
+def test_new_style_secret_keys_go_only_in_the_apikey_header(calls):
+    # sb_secret_... keys are not JWTs; Supabase reads them from the apikey header
+    storage.SupabaseStorageBackend(url="https://x.supabase.co", key="sb_secret_abc").list_pies()
+    assert calls[0]["headers"]["apikey"] == "sb_secret_abc"
+    assert "Authorization" not in calls[0]["headers"]

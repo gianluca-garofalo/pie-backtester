@@ -220,12 +220,10 @@ class SupabaseStorageBackend:
         self.key = key
 
     def _headers(self) -> dict[str, str]:
-        return {
-            "apikey": self.key,
-            "Authorization": f"Bearer {self.key}",
-            "Content-Type": "application/json",
-            "Prefer": "return=representation",
-        }
+        headers = {"apikey": self.key, "Content-Type": "application/json", "Prefer": "return=representation"}
+        if not self.key.startswith("sb_"):  # legacy service_role JWT; new sb_secret_ keys aren't JWTs
+            headers["Authorization"] = f"Bearer {self.key}"
+        return headers
 
     @staticmethod
     def _from_row(row: dict[str, Any]) -> dict[str, Any]:
