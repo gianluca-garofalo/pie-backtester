@@ -111,6 +111,45 @@ def close_open_pie():
     pie_changed()
 
 
+def open_compared(i):
+    """Click on a compared pie: it opens in the table, and the pie being edited takes its place."""
+    e = st.session_state.compare[i]
+    current = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
+    if current:
+        st.session_state.compare[i] = {
+            "name": st.session_state.pie_name, "weights": current, "color": st.session_state.own_color,
+            "names": {a["Ticker"]: a.get("Name") or a["Ticker"] for a in st.session_state.pie if a["Ticker"] in current}}
+    else:
+        st.session_state.compare.pop(i)
+    st.session_state.pie = [{"Ticker": t, "Name": e.get("names", {}).get(t, t), "Weight %": w}
+                            for t, w in e["weights"].items()]
+    st.session_state.pie_name = e["name"]
+    st.session_state.own_color = e.get("color") or st.session_state.own_color
+    st.session_state.fix_report = None
+    pie_changed()
+
+
+def scale_to_100():
+    """Keep the proportions, make the weights add up to exactly 100%."""
+    total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
+    for a in st.session_state.pie:
+        a["Weight %"] = round(float(a["Weight %"] or 0) * 100 / total, 2)
+    biggest = max(st.session_state.pie, key=lambda a: a["Weight %"])
+    biggest["Weight %"] = round(biggest["Weight %"] + 100 - sum(a["Weight %"] for a in st.session_state.pie), 2)
+    st.toast(f"Scaled the weights from {total:.2f}% to 100%.")
+    pie_changed()
+
+
+def shades(color, n):
+    """n shades of one colour, darkest first: the slices of a pie's donut."""
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    out = []
+    for i in range(n):
+        f = 0.7 * i / max(n - 1, 1)  # mix in up to 70% white
+        out.append("#%02x%02x%02x" % tuple(round(c + (255 - c) * f) for c in (r, g, b)))
+    return out
+
+
 def flash(kind, msg):
     """Show a message after the st.rerun() that usually follows."""
     st.session_state.flash = (kind, msg)
@@ -397,10 +436,13 @@ head, actions = st.columns([3, 2], vertical_alignment="bottom")
 head.title("Pie backtester")
 summary_slot = head.empty()  # filled once the results know the last price date
 with actions.container(horizontal=True, horizontal_alignment="right"):
-    with st.popover("Examples"):
+    if st.session_state.pop("close_examples", False):
+        st.session_state.examples_pop = False  # close it once a pie is loaded
+    with st.popover("Examples", key="examples_pop", on_change="rerun"):
         for i, ex in enumerate(examples):
             if st.button(ex["name"], key=f"ex_pop_{i}", width="stretch"):
                 load_pie(ex)
+                st.session_state.close_examples = True
                 st.rerun()
     can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
     if st.button("Save", key="save_open", disabled=not can_save,
@@ -425,138 +467,173 @@ if "flash" in st.session_state:
 
 OWN = f"{st.session_state.pie_name or 'My Pie'} (editing)"  # the pie in the table
 
-left, right = st.columns([3, 2], gap="large")
-
-with left:
-    if not st.session_state.pie:
-        # empty page: one click to a full result
-        st.markdown("**Start from an example**")
-        with st.container(horizontal=True):
-            for i, ex in enumerate(examples):
-                if st.button(ex["name"], key=f"ex_pill_{i}"):
-                    load_pie(ex)
-                    st.rerun()
-        st.caption("or build your own:")
-    st.subheader("Add assets")
-    q = st.text_input("Search by name, ticker or ISIN",
-                      placeholder="e.g. IE00BK5BQT80, Vanguard FTSE All-World, AAPL")
-    if q:
-        hits = cached_search(q)
-        if not hits:
-            st.info("No matches. Try the ticker with its exchange suffix, e.g. VWCE.DE, IWDA.AS, CSPX.L.")
-        else:
-            labels = [f"{h['symbol']} — {h['name']} ({h['exchange']}, {h['type']})" for h in hits]
-            choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
-            if st.button("Add to pie", type="primary"):
-                add_asset(hits[choice]["symbol"], hits[choice]["name"])
+if not st.session_state.pie and not st.session_state.compare:
+    # empty page: one click to a full result
+    st.markdown("**Start from an example**")
+    with st.container(horizontal=True):
+        for i, ex in enumerate(examples):
+            if st.button(ex["name"], key=f"ex_pill_{i}"):
+                load_pie(ex)
                 st.rerun()
+    st.caption("or build your own:")
 
-    with st.expander("Add a ticker directly"):
-        c1, c2 = st.columns([2, 1])
-        manual = c1.text_input("Yahoo ticker", placeholder="VWCE.DE")
-        if c2.button("Add", width="stretch") and manual.strip():
-            add_asset(manual.strip().upper(), manual.strip().upper())
-            st.rerun()
+strip = st.container()  # the pie chips; filled after the table so they see this run's edits
 
-    st.subheader("Your pie")
-    if not st.session_state.pie:
-        st.info("Your pie is empty. Search for an asset above to add the first slice.")
-    else:
-        # The table starts from a snapshot taken when the pie was last changed by code. Passing the
-        # live pie instead would change the table's input after every edit, and Streamlit then
-        # drops the next edit (it came back on the second try).
-        if st.session_state.get("editor_base_version") != st.session_state.editor_version:
-            st.session_state.editor_base = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
-            st.session_state.editor_base_version = st.session_state.editor_version
-        edited = st.data_editor(
-            st.session_state.editor_base,
-            num_rows="dynamic", width="stretch", hide_index=True,
-            # weights first and narrow, so long ETF names can't push them out of view
-            column_order=["Ticker", "Weight %", "Name"],
-            column_config={
-                "Ticker": st.column_config.TextColumn(required=True, width="small",
-                                                      help="Yahoo symbol with exchange suffix, e.g. VWRA.L or VECP.DE"),
-                "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.5, format="%.2f",
-                                                          width="small"),
-                "Name": st.column_config.TextColumn(width="large"),
-            },
-            key=f"pie_editor_{st.session_state.editor_version}",
-        )
-        rows = edited.dropna(subset=["Ticker"]).fillna({"Weight %": 0.0, "Name": ""})
-        rows["Ticker"] = rows["Ticker"].astype(str).str.strip().str.upper()
-        st.session_state.pie = rows[rows["Ticker"] != ""].to_dict("records")
-        total_w = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
+# ---------------- your pie: search, table, total and the allocation donut ----------------
+with st.container(border=True):
+    left, right = st.columns([3, 2], gap="large")
+    with left:
+        c_search, c_ticker = st.columns([4, 1], vertical_alignment="bottom")
+        q = c_search.text_input("Search by name, ticker or ISIN", label_visibility="collapsed",
+                                placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL")
+        with c_ticker.popover("+ Ticker", width="stretch"):
+            manual = st.text_input("Yahoo ticker", placeholder="VWCE.DE")
+            if st.button("Add", width="stretch") and manual.strip():
+                add_asset(manual.strip().upper(), manual.strip().upper())
+                st.rerun()
+        if q:
+            hits = cached_search(q)
+            if not hits:
+                st.info("No matches. Try the ticker with its exchange suffix, e.g. VWCE.DE, IWDA.AS, CSPX.L.")
+            else:
+                labels = [f"{h['symbol']} — {h['name']} ({h['exchange']}, {h['type']})" for h in hits]
+                choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
+                if st.button("Add to pie", type="primary"):
+                    add_asset(hits[choice]["symbol"], hits[choice]["name"])
+                    st.rerun()
 
-        for t in {a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])}:
-            hits = cached_resolve(t, base_ccy)
-            if hits and hits[0]["symbol"].upper() == t:
-                st.session_state.verified_tickers.add(t)
-        bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
-        c1, c2, c3, c4 = st.columns(4)
-        if c1.button("Fix tickers", width="stretch", disabled=not bare, type="primary" if bare else "secondary",
-                     help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):
-            with st.spinner("Looking up tickers…"):
-                fix_tickers(base_ccy)
-            st.rerun()
-        if c2.button("Split evenly", width="stretch"):
-            split_evenly()
-            pie_changed()
-            st.rerun()
-        if c3.button("Clear pie", width="stretch"):
-            st.session_state.pie, st.session_state.fix_report = [], None
-            pie_changed()
-            st.rerun()
-        if c4.button("Compare a copy", width="stretch", disabled=abs(total_w - 100) > 0.01,
-                     help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
-            add_to_comparison({"name": st.session_state.pie_name, "assets": [
-                {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
-            st.rerun()
+        if not st.session_state.pie:
+            st.info("Your pie is empty. Pick an example above or search for an asset.")
+            total_w = 0.0
+        else:
+            # The table starts from a snapshot taken when the pie was last changed by code. Passing the
+            # live pie instead would change the table's input after every edit, and Streamlit then
+            # drops the next edit (it came back on the second try).
+            if st.session_state.get("editor_base_version") != st.session_state.editor_version:
+                st.session_state.editor_base = pd.DataFrame(st.session_state.pie,
+                                                            columns=["Ticker", "Name", "Weight %"])
+                st.session_state.editor_base_version = st.session_state.editor_version
+            edited = st.data_editor(
+                st.session_state.editor_base,
+                num_rows="dynamic", width="stretch", hide_index=True,
+                # weights first and narrow, so long ETF names can't push them out of view
+                column_order=["Ticker", "Weight %", "Name"],
+                column_config={
+                    "Ticker": st.column_config.TextColumn(required=True, width="small",
+                                                          help="Yahoo symbol with exchange suffix, e.g. VWRA.L or VECP.DE"),
+                    "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.5,
+                                                              format="%.2f", width="small"),
+                    "Name": st.column_config.TextColumn(width="large"),
+                },
+                key=f"pie_editor_{st.session_state.editor_version}",
+            )
+            rows = edited.dropna(subset=["Ticker"]).fillna({"Weight %": 0.0, "Name": ""})
+            rows["Ticker"] = rows["Ticker"].astype(str).str.strip().str.upper()
+            st.session_state.pie = rows[rows["Ticker"] != ""].to_dict("records")
+            total_w = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
 
-        if bare:
-            st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
-                       "different security): " + ", ".join(bare) + ". Click 'Fix tickers'.")
-        if st.session_state.fix_report:
-            changed, unresolved = st.session_state.fix_report
-            if changed:
-                lines = [f"- **{old}** → `{new}` {name} ({exch})" +
-                         (f" · other listings: {', '.join(alts)}" if alts else "")
-                         for old, new, name, exch, alts in changed]
-                st.success("Updated tickers. Check they're the listings you hold; "
-                           "you can edit any ticker in the table.\n\n" + "\n".join(lines))
-            if unresolved:
-                st.error("Couldn't find " + ", ".join(unresolved) +
-                         ". Search for them by ISIN above and replace them.")
+            for t in {a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])}:
+                hits = cached_resolve(t, base_ccy)
+                if hits and hits[0]["symbol"].upper() == t:
+                    st.session_state.verified_tickers.add(t)
+            bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
 
-        if abs(total_w - 100) > 0.01:
-            st.warning(f"Weights add up to {total_w:.2f}%. They need to add up to 100%.")
-        named = [a["Ticker"] for a in st.session_state.pie]
-        dupes = sorted({t for t in named if named.count(t) > 1})
-        if dupes:
-            st.warning("These tickers are in the pie more than once: " + ", ".join(dupes) +
-                       ". Merge them into one row.")
+            # the live total says why results are missing, before anyone looks for them
+            if abs(total_w - 100) <= 0.01:
+                st.markdown(":green[**Total 100% ✓**]")
+            elif total_w < 100:
+                st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]")
+            else:
+                st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]")
+            with st.container(horizontal=True, vertical_alignment="center"):
+                if bare and st.button("Fix tickers", type="primary",
+                                      help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):
+                    with st.spinner("Looking up tickers…"):
+                        fix_tickers(base_ccy)
+                    st.rerun()
+                if st.button("Split evenly"):
+                    split_evenly()
+                    pie_changed()
+                    st.rerun()
+                if st.button("Scale to 100%", disabled=abs(total_w - 100) <= 0.01 or total_w == 0):
+                    scale_to_100()
+                    st.rerun()
+                if st.button("Compare a copy", disabled=abs(total_w - 100) > 0.01,
+                             help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
+                    add_to_comparison({"name": st.session_state.pie_name, "assets": [
+                        {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
+                    st.rerun()
+                if st.button("Clear pie"):
+                    st.session_state.pie, st.session_state.fix_report = [], None
+                    pie_changed()
+                    st.rerun()
 
-with right:
-    # one donut at a time; the names above it pick which pie (like a chart legend)
-    donuts = {}
-    if st.session_state.pie:
-        dfp = pd.DataFrame(st.session_state.pie)
-        donuts[OWN] = dfp[dfp["Weight %"] > 0]
-    for e in st.session_state.compare:
-        donuts[e["name"]] = pd.DataFrame({"Ticker": list(e["weights"]), "Weight %": list(e["weights"].values()),
-                                          "Name": list(e["weights"])})
-    if donuts:
-        shown = OWN if OWN in donuts else next(iter(donuts))
-        if len(donuts) > 1:
-            shown = st.segmented_control("Show allocation of", list(donuts), default=shown, required=True,
-                                         label_visibility="collapsed") or shown
-        dfp = donuts[shown]
+            if bare:
+                st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
+                           "different security): " + ", ".join(bare) + ". Click 'Fix tickers'.")
+            if st.session_state.fix_report:
+                changed, unresolved = st.session_state.fix_report
+                if changed:
+                    lines = [f"- **{old}** → `{new}` {name} ({exch})" +
+                             (f" · other listings: {', '.join(alts)}" if alts else "")
+                             for old, new, name, exch, alts in changed]
+                    st.success("Updated tickers. Check they're the listings you hold; "
+                               "you can edit any ticker in the table.\n\n" + "\n".join(lines))
+                if unresolved:
+                    st.error("Couldn't find " + ", ".join(unresolved) +
+                             ". Search for them by ISIN above and replace them.")
+            named = [a["Ticker"] for a in st.session_state.pie]
+            dupes = sorted({t for t in named if named.count(t) > 1})
+            if dupes:
+                st.warning("These tickers are in the pie more than once: " + ", ".join(dupes) +
+                           ". Merge them into one row.")
+
+    with right:
+        dfp = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
+        dfp = dfp[dfp["Weight %"] > 0]
         if not dfp.empty:
-            fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55,
-                                   marker=dict(colors=PALETTE), sort=False,
-                                   hovertext=dfp["Name"], hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>"))
-            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=340, showlegend=True,
+            st.markdown("**Allocation**")
+            fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55, sort=False,
+                                   marker=dict(colors=shades(st.session_state.own_color, len(dfp)),
+                                               line=dict(color="#ffffff", width=2)),
+                                   hovertext=dfp["Name"],
+                                   hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>"))
+            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300, showlegend=True,
                               annotations=[dict(text="Target", x=0.5, y=0.5, showarrow=False, font_size=16)])
             st.plotly_chart(fig)
+
+# ---------------- the pie strip: one chip per loaded pie, in its colour ----------------
+own_complete = bool(st.session_state.pie) and abs(total_w - 100) <= 0.01
+chips = ([("own", OWN, st.session_state.own_color)] if st.session_state.pie else []) + \
+    [(str(i), e["name"], e.get("color") or "#8a8d96") for i, e in enumerate(st.session_state.compare)]
+with strip:
+    if chips:
+        # Streamlit buttons can't be coloured, so each chip's container gets a small CSS rule
+        st.html("<style>" + "".join(
+            f".st-key-chip_{k}{{border-color:{c} !important;border-radius:999px !important;padding:0 10px !important}}"
+            f".st-key-chip_name_{k} p::before{{content:'●';color:{c};margin-right:6px}}"
+            for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}</style>")
+        with st.container(horizontal=True, vertical_alignment="center"):
+            for k, name, c in chips:
+                with st.container(key=f"chip_{k}", border=True, horizontal=True, width="content",
+                                  vertical_alignment="center", gap=None):
+                    if k == "own":
+                        st.button(name, key="chip_name_own", type="tertiary", help="The pie in the table below")
+                    elif st.button(name, key=f"chip_name_{k}", type="tertiary", disabled=not own_complete,
+                                   help="Edit this pie" if own_complete else
+                                   "Finish the pie you're editing (weights at 100%) before switching"):
+                        open_compared(int(k))
+                        st.rerun()
+                    if st.button("✕", key=f"chip_x_{k}", type="tertiary", help=f"Remove {name}"):
+                        if k == "own":
+                            close_open_pie()
+                        else:
+                            st.session_state.compare.pop(int(k))
+                        st.rerun()
+            st.caption(f"{len(chips)} of {MAX_COMPARED}" + (" · click a pie to edit it" if len(chips) > 1 else ""))
+            if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
+                st.session_state.compare = []
+                st.rerun()
 
 # ---------------- results ----------------
 # Results update by themselves: no run button. Your pie is shown once it's valid, next to any compared pies.
@@ -621,7 +698,9 @@ if results:
         if st.session_state.pie:
             st.caption("Your pie appears here once its weights add up to 100% and its tickers are fixed.")
 
-    colors = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(results)}
+    # each pie keeps the colour of its chip in every chart and table
+    colors = {OWN: st.session_state.own_color} | {e["name"]: e.get("color") or "#8a8d96"
+                                                  for e in st.session_state.compare}
     tab_names = ["Value", "By asset", "Drawdown", "Holdings"] if own else ["Value", "Drawdown"]
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
     with tabs["Value"]:
@@ -679,24 +758,13 @@ if results:
             st.download_button("Download daily values (.csv)", csv, "pie_history.csv", "text/csv")
 elif st.session_state.pie and not settings_ok:
     st.info("Fix the settings in the sidebar to see the backtest.")
+elif st.session_state.pie and not own_ready:
+    st.info("The results appear here once the weights add up to 100% and every ticker is found.")
 
 # ---------------- comparison ----------------
 if st.session_state.compare:
     st.divider()
-    head, clear = st.columns([4, 1])
-    head.subheader("Comparison")
-    if clear.button("Clear comparison", width="stretch"):
-        st.session_state.compare = []
-        st.rerun()
-    chips = st.columns(MAX_COMPARED)
-    if st.session_state.pie and chips[0].button(f"✕ {OWN}", key="cmp_remove_open",
-                                                help="Remove this pie and open the last compared one"):
-        close_open_pie()
-        st.rerun()
-    for i, e in enumerate(st.session_state.compare, start=1 if st.session_state.pie else 0):
-        if chips[i].button(f"✕ {e['name']}", key=f"cmp_remove_{e['name']}", help="Remove from the comparison"):
-            st.session_state.compare.remove(e)
-            st.rerun()
+    st.subheader("Compared pies")
     if len(results) > 1:
         st.dataframe(engine.comparison_table(results), hide_index=True, width="stretch", column_config={
             "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
