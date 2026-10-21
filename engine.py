@@ -104,6 +104,11 @@ def load_prices(tickers: list[str], start, end, base_ccy: str = "EUR") -> tuple[
         raise ValueError("No prices found for any asset." + hint)
 
     missing = [t for t in tickers if t not in raw.columns or raw[t].dropna().empty]
+    if missing:  # batch downloads sometimes drop a ticker; ask for those once more
+        retry = _close_frame(missing, fetch_start, end_excl)
+        if not retry.empty:
+            raw = raw.drop(columns=[c for c in retry.columns if c in raw.columns]).join(retry, how="outer")
+        missing = [t for t in tickers if t not in raw.columns or raw[t].dropna().empty]
     if missing:
         bare = [t for t in missing if needs_suffix(t)]
         hint = (" Tickers like " + ", ".join(bare) + " need an exchange suffix on Yahoo "

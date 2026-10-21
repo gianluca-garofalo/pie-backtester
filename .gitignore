@@ -19,3 +19,5 @@ streamlit.log
 .coverage
 .venv/
 test-results/
+.claude/settings.local.json
+.claude/memory/

@@ -28,9 +28,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`, `save_pie_name_input`). Change them only through `load_pie()`, which applies them on the next rerun through `pending_settings`.
 - Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
+- Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md`. Update the ledger before pausing.
 
 ## Things that are easy to get wrong
 
+- Yahoo sometimes drops a ticker from a batch download. `load_prices` retries the missing ones once, so don't treat one failed run as a bad ticker.
 - Yahoo tickers: European ETFs need an exchange suffix (`VWCE.DE`). US stocks don't (`AAPL`). `resolve_ticker` must rank the exact bare listing above foreign ones such as `AAPL.TO`, which is a Canadian depositary receipt.
 - `st.date_input` defaults to a lower bound 10 years back, so always pass `min_value`.
 - Streamlit 1.66 DOM, for E2E tests: selects are react-aria comboboxes (`get_by_role("combobox", name=label)`). The pie table is a canvas grid, so read it through its hidden `table` and edit by clicking coordinates, then Enter, then typing. Dates commit on blur, not on Tab. Wait for reruns with `stApp[data-test-script-state=notRunning]`.

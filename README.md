@@ -52,7 +52,15 @@ If secrets are not provided, the app runs out-of-the-box in local storage mode u
 ## Run Tests
 
 ```bash
-python3 -m pytest
+python3 -m pytest                  # unit tests
+```
+
+Browser tests drive the real app in Chromium with Playwright. They need internet access for Yahoo Finance data:
+
+```bash
+pip install -r requirements-dev.txt
+playwright install chromium
+python3 -m pytest -m e2e
 ```
 
 ## Disclaimer

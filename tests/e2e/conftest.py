@@ -98,7 +98,8 @@ class App:
         self.wait()
 
     def load_example(self, name):
-        self.choose("Load example pie", name)
+        if self.page.get_by_role("combobox", name="Load example pie").input_value() != name:
+            self.choose("Load example pie", name)
         self.click("Load example")
 
     def set_number(self, label, value):
@@ -137,14 +138,22 @@ class App:
         return [r[0] for r in self.rows()]
 
     def edit_weight(self, row, value):
+        self.rows()  # the grid is interactive once its accessible table is filled
         box = self.grid.bounding_box()
-        # canvas cell: row marker and the narrow Ticker column come first
-        self.page.mouse.click(box["x"] + 140, box["y"] + 35 * (row + 1) + 17)
-        self.page.wait_for_timeout(200)
-        self.page.keyboard.press("Enter")  # open the cell editor; typing first would eat a key
-        self.page.wait_for_timeout(300)
+        for _ in range(5):
+            # canvas cell: row marker and the narrow Ticker column come first
+            self.page.mouse.click(box["x"] + 140, box["y"] + 35 * (row + 1) + 17)
+            self.page.wait_for_timeout(200)
+            self.page.keyboard.press("Enter")  # open the cell editor; typing first would eat a key
+            self.page.wait_for_timeout(400)
+            if self.page.evaluate("document.activeElement.classList.contains('gdg-input')"):
+                break
+            self.page.keyboard.press("Escape")
+        else:
+            raise AssertionError("cell editor did not open")
         self.page.keyboard.press("Control+a")
         self.page.keyboard.type(str(value))
+        self.page.wait_for_timeout(300)  # the number editor applies typed text with a delay
         self.page.keyboard.press("Enter")
         self.wait()
 

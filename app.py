@@ -64,7 +64,9 @@ def load_pie(cfg):
     for key in ("start", "end"):
         try:
             d = date.fromisoformat(str(cfg.get(key)))
-        except ValueError:
+        except ValueError:  # no end date means "up to date"; no start keeps the current one
+            if key == "end":
+                pending["end"] = date.today()
             continue
         pending[key] = min(d, date.today())
     st.session_state.pending_settings = pending
@@ -378,7 +380,8 @@ with left:
 
         if abs(total_w - 100) > 0.01:
             st.warning(f"Weights add up to {total_w:.2f}%. They need to add up to 100%.")
-        dupes = sorted({t for t in rows["Ticker"] if (rows["Ticker"] == t).sum() > 1})
+        named = [a["Ticker"] for a in st.session_state.pie]
+        dupes = sorted({t for t in named if named.count(t) > 1})
         if dupes:
             st.warning("These tickers are in the pie more than once: " + ", ".join(dupes) +
                        ". Merge them into one row.")

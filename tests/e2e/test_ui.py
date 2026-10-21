@@ -146,6 +146,7 @@ def test_dates_before_2010_are_allowed(app):
     app.page.get_by_text("Hold a not-yet-listed").click()
     app.wait()
     app.run_backtest()
+    assert app.metrics(), app.alerts()
     expect(app.page.get_by_role("heading", name="2005-03-01 to")).to_be_visible()
 
 
@@ -161,6 +162,11 @@ def test_run_is_blocked_with_explanation(app):
     app.set_date("End date", "2025-01-01")
     expect(app.page.get_by_text("The start date must be before the end date.")).to_be_visible()
     expect(app.page.get_by_role("button", name="Run backtest")).to_be_disabled()
+
+    # examples have no end date, which means "up to date"
+    app.load_example("All-World ETF")
+    expect(app.page.get_by_text("The start date must be before the end date.")).to_have_count(0)
+    expect(app.page.get_by_role("button", name="Run backtest")).to_be_enabled()
 
 
 def test_guest_account_without_google_config(app):

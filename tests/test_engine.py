@@ -78,3 +78,19 @@ def test_rebase_starts_late_assets_at_their_first_price():
     assert rebased["OLD"].tolist() == pytest.approx([100.0, 110.0, 120.0, 130.0])
     assert rebased["NEW"].iloc[2:].tolist() == pytest.approx([100.0, 110.0])
     assert rebased["NEW"].iloc[:2].isna().all()
+
+
+def test_load_prices_retries_tickers_yahoo_dropped(monkeypatch):
+    dates = pd.date_range("2023-01-02", periods=3, freq="D")
+    calls = []
+
+    def fake_close_frame(tickers, start, end):
+        calls.append(list(tickers))
+        # the first batch download silently drops MSFT, as Yahoo sometimes does
+        return pd.DataFrame({t: [1.0, 2.0, 3.0] for t in tickers if len(calls) > 1 or t != "MSFT"}, index=dates)
+
+    monkeypatch.setattr(engine, "_close_frame", fake_close_frame)
+    monkeypatch.setattr(engine, "get_currency", lambda t: "USD")
+    prices, _ = engine.load_prices(["AAPL", "MSFT"], "2023-01-02", "2023-01-04", "USD")
+    assert list(prices.columns) == ["AAPL", "MSFT"]
+    assert calls == [["AAPL", "MSFT"], ["MSFT"]]
