@@ -35,6 +35,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
 - Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md`. Update the ledger before pausing.
 
+## Skills in this repo
+
+- `.claude/skills/proposing-design-options/` shows the user design options as pictures. It covers research, parallel design directions, same-state mockups rendered to PNG with `render_mockups.py`, and the choice and its record. To use it in other projects, copy the folder to `~/.claude/skills/` (all projects) or to another project's `.claude/skills/`.
+
 ## Things that are easy to get wrong
 
 - Yahoo sometimes drops a ticker from a batch download. `load_prices` retries the missing ones once, so don't treat one failed run as a bad ticker.
