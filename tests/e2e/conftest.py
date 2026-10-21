@@ -134,6 +134,17 @@ class App:
             self.page.wait_for_timeout(250)
         return []
 
+    def eventually(self, read, expected, timeout=15_000):
+        """Poll read() until it returns expected; tables update a moment after the rerun ends."""
+        value = None
+        for _ in range(timeout // 250):
+            value = read()
+            if value == expected:
+                return value
+            self.page.wait_for_timeout(250)
+        assert value == expected
+        return value
+
     def tickers(self):
         return [r[0] for r in self.rows()]
 

@@ -5,7 +5,7 @@ Build a Trading 212-style pie of ETFs and stocks, pick a start date, and see how
 ## Features
 
 - **Curated Example Pies**: Quickly load popular strategies like All-World ETF, 60/40 Stocks & Bonds, Three-Fund Portfolio, Dividend Focus, and Tech Leaders.
-- **Compare Pies**: Add example, saved or uploaded pies (or a snapshot of your own) to a comparison. Up to 5 pies are compared automatically on the same settings: overlaid value and drawdown charts plus a table of returns, CAGR, drawdown and volatility.
+- **Compare Pies**: Loading another pie keeps the previous one on the charts, so you can compare up to 5 pies on the same settings: overlaid value and drawdown charts, a table of returns, CAGR, drawdown and volatility, and a picker to see each pie's allocation.
 - **Share Links**: Share your pie setup instantly using compressed, URL-safe query parameters (`?pie=...`).
 - **Save & Load**: Persist your custom pies locally or connect Supabase for cloud database storage.
 - **Google Authentication**: Optional Google login via native Streamlit auth (`st.login("google")`).
@@ -25,8 +25,8 @@ Open http://localhost:8501 in your browser.
 1. **Load or Create a Pie**: Choose an example pie from the sidebar dropdown, upload a `.json` file, or search by ISIN, ticker, or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`) to add assets manually.
 2. **Set Target Weights**: Ensure asset weights sum to 100% (or use the "Split evenly" button).
 3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
-4. **Run Backtest**: Click "Run backtest" to view performance charts, drawdowns, CAGR, and holdings breakdown.
-5. **Compare**: Click "Add to comparison" under an example or saved pie, or "Add a copy to the comparison" under your pie. The comparison appears once there are two pies.
+4. **See the Results**: Once the weights add up to 100%, the backtest runs by itself: performance charts, drawdowns, CAGR and the holdings breakdown.
+5. **Compare**: Load another pie, and the previous one stays on the charts. Use "Add a copy to the comparison" to compare versions of your own pie, and ✕ to remove a pie.
 6. **Share or Save**: Copy the share link from the sidebar or save the pie to your account/local storage.
 
 ## Setup Supabase & Authentication (Optional)

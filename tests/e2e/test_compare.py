@@ -40,9 +40,9 @@ def test_snapshot_of_your_own_pie(app):
 def test_pie_selector_switches_the_allocation_donut(app):
     app.load_example("All-World ETF")
     app.load_example("Tech Leaders")
-    selector = app.page.get_by_role("button", name="All-World ETF", exact=True)
-    expect(app.page.get_by_role("button", name="Tech Leaders (editing)")).to_be_visible()
-    selector.click()
+    picker = app.page.get_by_role("radiogroup", name="Show allocation of")
+    expect(picker.get_by_role("radio", name="Tech Leaders (editing)")).to_be_checked()
+    picker.get_by_role("radio", name="All-World ETF").click()
     app.wait()
     donut = app.page.get_by_test_id("stPlotlyChart").first
     expect(donut).to_contain_text("VWCE.DE")
@@ -54,13 +54,14 @@ def test_compared_pies_share_the_sidebar_settings(app):
     app.load_example("Three-Fund Portfolio")
     app.set_number("Initial investment (EUR)", 5000)
     app.set_number("Monthly deposit (EUR)", 0)
-    assert {float(r[3]) for r in comparison_rows(app)} == {5000.0}  # Pie, From, Final value, Invested
+    # columns: Pie, From, Final value, Invested
+    app.eventually(lambda: {float(r[3]) for r in comparison_rows(app)}, {5000.0})
 
 
 def test_a_pie_with_later_assets_starts_later(app):
     app.load_example("Tech Leaders")
     app.load_example("All-World ETF")
     app.set_date("Start date", "2015-01-01")
-    starts = {r[0]: r[1] for r in comparison_rows(app)}
-    assert starts == {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"}
+    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
+                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
     expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()
