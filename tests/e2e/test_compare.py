@@ -49,15 +49,15 @@ def test_clicking_a_compared_pie_opens_it(app):
 def test_compared_pies_share_the_sidebar_settings(app):
     app.load_example("All-World ETF")
     app.load_example("Three-Fund Portfolio")
-    app.set_number("Initial (EUR)", 5000)
-    app.set_number("Monthly (EUR)", 0)
+    app.set_number("Initial", 5000)
+    app.set_number("Monthly", 0)
     expect(app.page.get_by_text("Every pie had €5,000.00 put in.")).to_be_visible()
 
 
 def test_a_pie_with_later_assets_starts_later(app):
     app.load_example("Tech Leaders")
     app.load_example("All-World ETF")
-    app.set_date("Start date", "2015-01-01")
+    app.set_date("From", "2015-01-01")
     app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
                    {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
     expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()

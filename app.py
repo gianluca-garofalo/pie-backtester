@@ -159,6 +159,31 @@ def flash(kind, msg):
     st.session_state.flash = (kind, msg)
 
 
+def side_label(text):
+    """A small upper-case section heading in the sidebar."""
+    st.html(f'<div class="side-label">{text}</div>')
+
+
+# The sidebar needs some CSS to fit design A: dates and four rebalance buttons side by side in 240px.
+# It uses Streamlit's test ids, so check it after a Streamlit upgrade.
+SIDEBAR_CSS = """<style>
+.side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+[data-testid=stSidebar] [data-testid=stDateInputField]{padding-left:.6rem;padding-right:.4rem}
+[data-testid=stSidebar] [data-testid=stDateInputField] [role=group]{padding-left:0;padding-right:0}
+[data-testid=stSidebar] [data-testid=stDateInputField] [role=group] span{padding:0}
+[data-testid=stSidebar] [data-testid=stDateInputField] > div:last-child{width:auto}
+[data-testid=stSidebar] [data-testid=stDateInputCalendarButton]{padding:0}
+.st-key-rebalance [role=radiogroup]{flex-wrap:nowrap}
+.st-key-rebalance button{padding-left:0;padding-right:0;flex:1 1 0;min-width:0}
+.st-key-initial button,.st-key-monthly button{display:none}
+[data-testid=stSidebar] [data-testid=stExpander] details{border:none;background:none}
+[data-testid=stSidebar] [data-testid=stExpander] summary{padding:0;min-height:1.6rem}
+[data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
+.st-key-account p{font-size:.875rem}
+.st-key-account button p{text-decoration:underline}
+</style>"""
+
+
 # Check for share link in query params on initial load
 if "loaded_query_pie" not in st.session_state:
     st.session_state.loaded_query_pie = True
@@ -320,6 +345,9 @@ active_storage = storage.get_storage(url=supabase_url, key=supabase_key)
 shared_storage = isinstance(active_storage, storage.SupabaseStorageBackend)
 
 CURRENCY_SIGNS = {"EUR": "€", "USD": "$", "GBP": "£"}
+CURRENCY_ICONS = {"EUR": ":material/euro:", "USD": ":material/attach_money:", "GBP": ":material/currency_pound:",
+                  "CHF": ":material/currency_franc:"}
+REBALANCE_LABELS = {"Never": "Never", "Monthly": "Month", "Quarterly": "Quarter", "Yearly": "Year"}
 
 
 def money(x, ccy, compact=False):
@@ -349,6 +377,7 @@ def save_dialog():
 
 # ---------------- sidebar: settings first, then your pies, then the account ----------------
 with st.sidebar:
+    st.html(SIDEBAR_CSS)
     settings_box, pies_box, account_box = st.container(), st.container(), st.container()
 
 with account_box:
@@ -360,34 +389,39 @@ with account_box:
     user_id = current_user.get("id") if current_user else None
 
 with settings_box:
-    st.subheader("Backtest settings")
-    base_ccy = st.selectbox("Pie currency", CURRENCIES, key="base_ccy")
+    side_label("Backtest settings")
+    base_ccy = st.selectbox("Currency", CURRENCIES, key="base_ccy")
+    c_from, c_to = st.columns(2)
     # Streamlit's default lower bound is only ten years back
-    start = st.date_input("Start date", min_value=date(1970, 1, 1), max_value=date.today(), key="start")
-    end = st.date_input("End date", min_value=date(1970, 1, 1), max_value=date.today(), key="end")
+    start = c_from.date_input("From", min_value=date(1970, 1, 1), max_value=date.today(), key="start",
+                              format="YYYY-MM-DD")
+    end = c_to.date_input("To", min_value=date(1970, 1, 1), max_value=date.today(), key="end",
+                          format="YYYY-MM-DD")
     if start >= end:
         st.warning("The start date must be before the end date.")
     c_init, c_month = st.columns(2)
-    initial = c_init.number_input(f"Initial ({base_ccy})", min_value=0.0, step=100.0, key="initial")
-    monthly = c_month.number_input(f"Monthly ({base_ccy})", min_value=0.0, step=50.0, key="monthly",
-                                   help="Invested on the first trading day of each month, split by target weights.")
+    # the currency shows as an icon in the field when Material has one, otherwise in the label
+    ccy_icon = CURRENCY_ICONS.get(base_ccy)
+    ccy_label = "" if ccy_icon else f" ({base_ccy})"
+    initial = c_init.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format="%.0f",
+                                  icon=ccy_icon, key="initial")
+    monthly = c_month.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format="%.0f",
+                                   icon=ccy_icon, key="monthly")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")
-    # four options don't fit on one line in the sidebar, so a dropdown rather than buttons
-    rebalance = st.selectbox("Rebalance to target", list(engine.REBALANCE_RULES), key="rebalance",
-                             help="Trading 212 pies don't rebalance automatically, so 'Never' matches them.")
+    rebalance = st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
+                                     format_func=REBALANCE_LABELS.get, width="stretch", key="rebalance")
     before_listing = st.radio("Assets that list later", list(engine.BEFORE_LISTING),
-                              format_func=engine.BEFORE_LISTING.get, key="before_listing",
-                              help="If one ETF launched later (e.g. in 2025), 'wait' shortens the whole backtest. "
-                                   "'Cash' keeps the full period and buys that ETF once it lists.")
+                              format_func=engine.BEFORE_LISTING.get, key="before_listing")
 
 pie_data_raw = pie_payload() if st.session_state.pie else None
 examples = storage.list_examples()
 
 with pies_box:
     st.divider()
-    with st.expander("Saved pies"):
-        saved_pies = active_storage.list_pies(user_id=user_id)
+    side_label("My pies")
+    saved_pies = active_storage.list_pies(user_id=user_id)
+    with st.expander(f"Saved pies ({len(saved_pies)})"):
         if saved_pies:
             def is_mine(p):
                 return not shared_storage or p.get("owner_id") == user_id

@@ -137,8 +137,8 @@ def load_prices(tickers: list[str], start, end, base_ccy: str = "EUR") -> tuple[
 
 REBALANCE_RULES = {"Never": None, "Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}
 BEFORE_LISTING = {
-    "wait": "Start when every asset has prices",
-    "cash": "Hold a not-yet-listed asset's slice as cash until it lists",
+    "wait": "Start when all have prices",
+    "cash": "Hold their slice as cash",
 }
 
 

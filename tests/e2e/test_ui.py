@@ -22,9 +22,10 @@ def test_example_loads_settings_and_backtests(app, name):
     app.load_example(name)
 
     assert app.tickers() == [a["ticker"] for a in ex["assets"]]
-    expect(app.page.get_by_role("combobox", name="Pie currency")).to_have_value(ex["currency"])
-    expect(app.page.get_by_role("combobox", name="Rebalance to target")).to_have_value(ex["rebalance"])
-    expect(app.page.get_by_role("spinbutton", name=f"Monthly ({ex['currency']})")).to_have_value(f"{ex['monthly']:.2f}")
+    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value(ex["currency"])
+    expect(app.page.get_by_role("radiogroup", name="Rebalance to target").get_by_role("radio", checked=True)).to_have_text(
+        {"Never": "Never", "Monthly": "Month", "Quarterly": "Quarter", "Yearly": "Year"}[ex["rebalance"]])
+    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value(f"{ex['monthly']:.0f}")
     expect(app.page.get_by_text(f"/month · {ex['start'][:7]}")).to_be_visible()  # the settings summary line
 
     assert not [a for a in app.alerts() if "failed" in a.lower() or "couldn't" in a.lower()], app.alerts()
@@ -120,7 +121,7 @@ def test_save_load_delete(app):
 
 def test_export_then_import(app, tmp_path):
     app.load_example("All-World ETF")
-    app.set_number("Initial (EUR)", 2500)
+    app.set_number("Initial", 2500)
     app.open_sidebar_section("Import / export JSON")
     with app.page.expect_download() as dl:
         app.sidebar.get_by_role("button", name="Download pie (.json)").click()
@@ -135,13 +136,13 @@ def test_export_then_import(app, tmp_path):
     app.wait()
     app.click("Load this pie", root=app.sidebar)
     assert app.tickers() == ["VWCE.DE"]
-    expect(app.page.get_by_role("spinbutton", name="Initial (EUR)")).to_have_value("777.00")
+    expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("777")
     assert app.chips() == ["Imported (editing)"]
 
 
 def test_share_link_restores_pie_and_settings(app):
     app.load_example("Tech Leaders")
-    app.set_number("Initial (USD)", 4321)
+    app.set_number("Initial", 4321)
     app.page.get_by_role("button", name="Share").click()
     link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
     assert link.startswith(app.url) and "?pie=" in link
@@ -149,8 +150,8 @@ def test_share_link_restores_pie_and_settings(app):
     app.page.goto(link)
     app.wait()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
-    expect(app.page.get_by_role("combobox", name="Pie currency")).to_have_value("USD")
-    expect(app.page.get_by_role("spinbutton", name="Initial (USD)")).to_have_value("4321.00")
+    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("USD")
+    expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("4321")
 
 
 def test_broken_share_link_says_so(app):
@@ -160,11 +161,11 @@ def test_broken_share_link_says_so(app):
 
 
 def test_dates_before_2010_are_allowed(app):
-    app.set_date("Start date", "2005-03-01")
-    field = app.page.get_by_role("group", name="Start date")
+    app.set_date("From", "2005-03-01")
+    field = app.page.get_by_role("group", name="From")
     expect(field).not_to_have_attribute("aria-invalid", "true")
     app.load_example("Tech Leaders")  # loading an example sets its own start date
-    app.set_date("Start date", "2005-03-01")
+    app.set_date("From", "2005-03-01")
     # QDVE.DE lists in 2015, so the pie would start then; one click keeps the full period
     expect(app.page.get_by_text("This pie starts on 2015-12-03")).to_be_visible()
     app.click("Hold cash until they list")
@@ -175,14 +176,14 @@ def test_dates_before_2010_are_allowed(app):
 
 def test_results_wait_for_valid_settings(app):
     app.load_example("All-World ETF")
-    app.set_number("Initial (EUR)", 0)
-    app.set_number("Monthly (EUR)", 0)
+    app.set_number("Initial", 0)
+    app.set_number("Monthly", 0)
     expect(app.page.get_by_text("Set an initial investment or a monthly deposit.")).to_be_visible()
     assert not app.metrics()
 
-    app.set_number("Monthly (EUR)", 100)
-    app.set_date("Start date", "2026-01-01")
-    app.set_date("End date", "2025-01-01")
+    app.set_number("Monthly", 100)
+    app.set_date("From", "2026-01-01")
+    app.set_date("To", "2025-01-01")
     expect(app.page.get_by_text("The start date must be before the end date.")).to_be_visible()
     assert not app.metrics()
 
@@ -203,10 +204,10 @@ def test_growth_chart_controls(app):
 
 def test_guest_account_without_google_config(app):
     expect(app.sidebar.get_by_role("button", name="Sign in with Google")).to_have_count(0)
-    app.click("Use Local Guest Account", root=app.sidebar)
-    expect(app.sidebar.get_by_text("Logged in as Local Guest")).to_be_visible()
+    app.click("Use guest account", root=app.sidebar)
+    expect(app.sidebar.get_by_text("Local Guest ·")).to_be_visible()
     app.click("Log out", root=app.sidebar)
-    expect(app.sidebar.get_by_role("button", name="Use Local Guest Account")).to_be_visible()
+    expect(app.sidebar.get_by_role("button", name="Use guest account")).to_be_visible()
 
 
 def test_consecutive_weight_edits_all_stick(app):

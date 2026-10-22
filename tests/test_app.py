@@ -60,7 +60,7 @@ def labels(at):
 
 def test_shared_storage_has_no_guest_account(requests_log):
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
-    assert "Use Local Guest Account" not in labels(at)
+    assert "Use guest account" not in labels(at)
     assert any("can't be saved" in w.value for w in at.warning)
     # anonymous visitors only see public pies
     assert requests_log[0] == ("get", {"select": "*", "is_public": "eq.true"})
@@ -78,13 +78,13 @@ def test_anonymous_visitor_cannot_save_or_delete(requests_log):
 def test_old_anon_key_secret_falls_back_with_a_warning(requests_log):
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_KEY="anon")
     assert any("SUPABASE_SERVICE_KEY" in w.value for w in at.warning)
-    assert "Use Local Guest Account" in labels(at)  # local storage, so the guest account is fine
+    assert "Use guest account" in labels(at)  # local storage, so the guest account is fine
     assert requests_log == []
 
 
 def test_local_storage_keeps_the_guest_account(requests_log):
     at = run_app()
-    assert "Use Local Guest Account" in labels(at)
+    assert "Use guest account" in labels(at)
     assert requests_log == []
 
 

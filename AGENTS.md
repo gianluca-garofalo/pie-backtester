@@ -29,6 +29,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Each loaded pie has a fixed colour from `PIE_COLORS` (Okabe-Ito; also in `.streamlit/config.toml`). It's assigned when the pie is loaded and used for its chip, chart lines, table name and donut shades (`shades()`). Keep the donut for allocations: the user chose it over bar charts.
 - The pie table starts from `editor_base`, a snapshot that only changes on `pie_changed()`. Passing the live pie makes Streamlit drop every other edit.
 - Buttons: icon + word for Save, Share, Examples and downloads (`icon=":material/…:"`). Words only for sign-in, destructive and app-specific actions. Only the ✕ on each pie chip is icon-only; its label "Remove <pie>" is hidden with CSS so screen readers still read it. The user chose this; don't make more buttons icon-only.
+- The sidebar matches `.claude/designs/A-refined.png`. Fitting it into 240px takes `SIDEBAR_CSS` in `app.py`, which relies on Streamlit's test ids, so check the sidebar after upgrading Streamlit.
 - Examples live only in the header menu: the user removed the example buttons from the empty page.
 - `docs/how-its-calculated.md` is shown in the "How it's calculated" tab. Update it whenever a formula in `engine.py` changes.
 - Format money with `money(x, ccy, compact)`. Escape `$` before passing text to Markdown or `st.caption`, or it turns into maths.

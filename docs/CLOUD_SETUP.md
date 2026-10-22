@@ -96,9 +96,9 @@ streamlit run app.py
 
 Open <http://localhost:8501> and work through this checklist:
 
-- [ ] **Signed out:** the sidebar shows **Sign in with Google**, and there's no "Use Local Guest Account" button.
+- [ ] **Signed out:** the sidebar shows **Sign in with Google**, and there's no "Use guest account" button.
 - [ ] **Load an example pie:** under *My saved pies* it says "Sign in to save pies".
-- [ ] **Sign in** with your test user. The sidebar shows "Logged in as …".
+- [ ] **Sign in** with your test user. The sidebar shows your name and "Log out".
 - [ ] **Save a pie:** you see "Saved pie '…'", and the pie appears in the saved-pies list.
 - [ ] **In Supabase → Table Editor → pies:** the new row has `owner_id` = `google:…`.
 - [ ] **Save a second pie with "Make public" ticked.**
