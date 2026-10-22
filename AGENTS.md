@@ -28,6 +28,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Sidebar settings are keyed widgets (`base_ccy`, `start`, `end`, `initial`, `monthly`, `rebalance`, `before_listing`). Change them only through `load_pie()` or `pending_settings`, which is applied on the next rerun. The open pie's name and colour live in `pie_name` and `own_color`, not in widgets.
 - Each loaded pie has a fixed colour from `PIE_COLORS` (Okabe-Ito; also in `.streamlit/config.toml`). It's assigned when the pie is loaded and used for its chip, chart lines, table name and donut shades (`shades()`). Keep the donut for allocations: the user chose it over bar charts.
 - The pie table starts from `editor_base`, a snapshot that only changes on `pie_changed()`. Passing the live pie makes Streamlit drop every other edit.
+- Buttons: icon + word for Save, Share, Examples and downloads (`icon=":material/…:"`). Words only for sign-in, destructive and app-specific actions. Only the ✕ on each pie chip is icon-only; its label "Remove <pie>" is hidden with CSS so screen readers still read it. The user chose this; don't make more buttons icon-only.
+- Examples live only in the header menu: the user removed the example buttons from the empty page.
+- `docs/how-its-calculated.md` is shown in the "How it's calculated" tab. Update it whenever a formula in `engine.py` changes.
 - Format money with `money(x, ccy, compact)`. Escape `$` before passing text to Markdown or `st.caption`, or it turns into maths.
 - Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
 - Load prices with `prices_for()`, which caches each ticker separately, so the single backtest and the comparison reuse downloads. Every pie, yours and the compared ones, is simulated by `cached_backtest`, cached per pie, so unrelated reruns don't re-simulate. Each pie starts on its first day with prices within the sidebar dates.

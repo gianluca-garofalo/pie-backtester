@@ -122,7 +122,9 @@ class App:
         self.wait()
 
     def remove_pie(self, name):
-        self.page.locator(f".st-key-chip_x_{self.chip_key(name)} button").first.click()
+        # the ✕ is icon-only, but its accessible name says what it does
+        self.page.locator(f".st-key-chip_x_{self.chip_key(name)}").get_by_role(
+            "button", name=f"Remove {name}", exact=True).click()
         self.wait()
 
     def save_pie(self, name):

@@ -3,6 +3,7 @@
 Run with:  streamlit run app.py
 """
 import json
+from pathlib import Path
 from datetime import date
 
 import numpy as np
@@ -39,6 +40,7 @@ st.session_state.setdefault("pie_name", "My Pie")  # name of the pie in the tabl
 st.session_state.setdefault("own_color", PIE_COLORS[0])
 
 MAX_COMPARED = 5  # pies in one comparison, including yours
+METHOD = (Path(__file__).parent / "docs" / "how-its-calculated.md").read_text()  # the "How it's calculated" tab
 
 CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"]
 # sidebar settings, keyed so a loaded pie can set them
@@ -417,10 +419,10 @@ with pies_box:
                 pie_json = json.dumps(pie_data_raw, indent=2)
         else:
             pie_json = ""
-        st.download_button("Download pie (.json)", pie_json, file_name="my_pie.json", mime="application/json",
+        st.download_button("Download pie (.json)", pie_json, icon=":material/download:", file_name="my_pie.json", mime="application/json",
                            disabled=not st.session_state.pie)
         uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
-        if uploaded is not None and st.button("Load this pie"):
+        if uploaded is not None and st.button("Load this pie", icon=":material/upload_file:"):
             try:
                 uploaded.seek(0)
                 raw_content = json.load(uploaded)
@@ -440,17 +442,17 @@ summary_slot = head.empty()  # filled once the results know the last price date
 with actions.container(horizontal=True, horizontal_alignment="right"):
     if st.session_state.pop("close_examples", False):
         st.session_state.examples_pop = False  # close it once a pie is loaded
-    with st.popover("Examples", key="examples_pop", on_change="rerun"):
+    with st.popover("Examples", icon=":material/auto_awesome:", key="examples_pop", on_change="rerun"):
         for i, ex in enumerate(examples):
             if st.button(ex["name"], key=f"ex_pop_{i}", width="stretch"):
                 load_pie(ex)
                 st.session_state.close_examples = True
                 st.rerun()
     can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
-    if st.button("Save", key="save_open", disabled=not can_save,
+    if st.button("Save", icon=":material/save:", key="save_open", disabled=not can_save,
                  help=None if can_save or not st.session_state.pie else "Sign in to save pies."):
         save_dialog()
-    with st.popover("Share", disabled=not pie_data_raw):
+    with st.popover("Share", icon=":material/share:", disabled=not pie_data_raw):
         try:
             if not pie_data_raw:
                 raise ValueError("build a pie first")
@@ -468,16 +470,6 @@ if "flash" in st.session_state:
     getattr(st, _kind)(_msg)
 
 OWN = f"{st.session_state.pie_name or 'My Pie'} (editing)"  # the pie in the table
-
-if not st.session_state.pie and not st.session_state.compare:
-    # empty page: one click to a full result
-    st.markdown("**Start from an example**")
-    with st.container(horizontal=True):
-        for i, ex in enumerate(examples):
-            if st.button(ex["name"], key=f"ex_pill_{i}"):
-                load_pie(ex)
-                st.rerun()
-    st.caption("or build your own:")
 
 strip = st.container()  # the pie chips; filled after the table so they see this run's edits
 
@@ -505,7 +497,7 @@ with st.container(border=True):
                     st.rerun()
 
         if not st.session_state.pie:
-            st.info("Your pie is empty. Pick an example above or search for an asset.")
+            st.info("Your pie is empty. Pick one from Examples at the top, or search for an asset.")
             total_w = 0.0
         else:
             # The table starts from a snapshot taken when the pie was last changed by code. Passing the
@@ -614,7 +606,10 @@ with strip:
         st.html("<style>" + "".join(
             f".st-key-chip_{k}{{border-color:{c} !important;border-radius:999px !important;padding:0 10px !important}}"
             f".st-key-chip_name_{k} p::before{{content:'●';color:{c};margin-right:6px}}"
-            for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}</style>")
+            for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}"
+            # ✕ shows only its icon; the label stays for screen readers ("Remove <pie>")
+            "[class*='st-key-chip_x_'] [data-testid=stMarkdownContainer]{position:absolute;width:1px;height:1px;"
+            "overflow:hidden;clip-path:inset(50%);white-space:nowrap}</style>")
         with st.container(horizontal=True, vertical_alignment="center"):
             for k, name, c in chips:
                 with st.container(key=f"chip_{k}", border=True, horizontal=True, width="content",
@@ -626,7 +621,8 @@ with strip:
                                    "Finish the pie you're editing (weights at 100%) before switching"):
                         open_compared(int(k))
                         st.rerun()
-                    if st.button("✕", key=f"chip_x_{k}", type="tertiary", help=f"Remove {name}"):
+                    if st.button(f"Remove {name}", key=f"chip_x_{k}", type="tertiary", icon=":material/close:",
+                                 help=f"Remove {name}"):
                         if k == "own":
                             close_open_pie()
                         else:
@@ -715,7 +711,7 @@ if results:
     elif st.session_state.pie:
         st.caption("Your pie appears here once its weights add up to 100% and its tickers are fixed.")
 
-    tab_names = ["Growth", "By asset", "Holdings"] if own else ["Growth"]
+    tab_names = (["Growth", "By asset", "Holdings"] if own else ["Growth"]) + ["How it's calculated"]
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
     with tabs["Growth"]:
         years = max((r["total"].index[-1] - r["total"].index[0]).days for r in results.values()) / 365.25
@@ -773,6 +769,8 @@ if results:
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
                    "predict future returns.")
+    with tabs["How it's calculated"]:
+        st.markdown(METHOD)  # the formulas are LaTeX, so its $ signs are meant
     if own:
         weights = dict(entries[0][1])
         with tabs["By asset"]:
@@ -806,7 +804,8 @@ if results:
                        f". All values are converted to {ccy} with daily FX rates.")
             csv = pd.concat([res["values"], res["total"].rename("Total"),
                              res["invested"].rename("Invested")], axis=1).to_csv()
-            st.download_button("Download daily values (.csv)", csv, "pie_history.csv", "text/csv")
+            st.download_button("Download daily values (.csv)", csv, "pie_history.csv", "text/csv",
+                               icon=":material/download:")
 elif st.session_state.pie and not settings_ok:
     st.info("Fix the settings in the sidebar to see the backtest.")
 elif st.session_state.pie and not own_ready:

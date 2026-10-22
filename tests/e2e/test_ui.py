@@ -10,16 +10,10 @@ TILES = {"Value now", "You put in", "Return", "Per year", "Worst fall"}
 
 
 def test_empty_page(app):
-    expect(app.page.get_by_text("Start from an example")).to_be_visible()
-    expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+    expect(app.page.get_by_text("Start from an example")).to_have_count(0)  # examples live in the header menu
+    expect(app.page.get_by_text("Your pie is empty. Pick one from Examples at the top")).to_be_visible()
     expect(app.page.get_by_role("button", name="Run backtest")).to_have_count(0)  # results update by themselves
     expect(app.page.get_by_role("button", name="Save", exact=True)).to_be_disabled()
-
-
-def test_example_button_on_the_empty_page(app):
-    app.click("All-World ETF", exact=True)
-    assert app.tickers() == ["VWCE.DE"]
-    assert set(app.metrics()) == TILES
 
 
 @pytest.mark.parametrize("name", list(EXAMPLES))
@@ -222,3 +216,19 @@ def test_consecutive_weight_edits_all_stick(app):
     app.edit_weight(1, 30)
     assert [float(r[1]) for r in app.rows()] == [70, 30]
     assert app.metrics()
+
+
+def test_how_its_calculated_tab(app):
+    app.load_example("All-World ETF")
+    app.page.get_by_role("tab", name="How it's calculated").click()
+    panel = app.page.get_by_role("tabpanel", name="How it's calculated")
+    expect(panel.get_by_text("Return", exact=True)).to_be_visible()
+    expect(panel.locator(".katex").first).to_be_visible()  # the formulas render as maths, not as $…$
+
+
+def test_standard_actions_have_icons_and_words(app):
+    app.load_example("All-World ETF")
+    for name in ("Examples", "Save", "Share"):
+        button = app.page.get_by_role("button", name=name, exact=True)
+        expect(button).to_be_visible()  # the word is the accessible name
+        expect(button.get_by_test_id("stIconMaterial").first).to_be_visible()  # popovers add an arrow icon after it

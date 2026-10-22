@@ -22,12 +22,13 @@ Open http://localhost:8501 in your browser.
 
 ## How to Use
 
-1. **Load or Create a Pie**: Click an example (on the empty page, or under **Examples** at the top), load a saved pie or a `.json` file from the sidebar, or search by ISIN, ticker or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`) to add assets.
+1. **Load or Create a Pie**: Pick an example under **Examples** at the top, load a saved pie or a `.json` file from the sidebar, or search by ISIN, ticker or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`) to add assets.
 2. **Set Target Weights**: The live total shows how much is left. Use "Split evenly" or "Scale to 100%".
 3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
 4. **See the Results**: Once the weights add up to 100%, the backtest runs by itself: performance charts, drawdowns, CAGR and the holdings breakdown.
-5. **Compare**: Load another pie, and the previous one stays on the charts as a coloured chip. Click a chip to edit that pie, ✕ to remove it, and "Compare a copy" to compare versions of your own pie.
-6. **Share or Save**: Use **Share** (a link with the pie and its settings) or **Save** at the top.
+5. **Check the maths**: the "How it's calculated" tab lists every formula ([docs/how-its-calculated.md](docs/how-its-calculated.md)).
+6. **Compare**: Load another pie, and the previous one stays on the charts as a coloured chip. Click a chip to edit that pie, ✕ to remove it, and "Compare a copy" to compare versions of your own pie.
+7. **Share or Save**: Use **Share** (a link with the pie and its settings) or **Save** at the top.
 
 ## Setup Supabase & Authentication (Optional)
 

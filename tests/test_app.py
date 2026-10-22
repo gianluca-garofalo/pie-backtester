@@ -68,7 +68,7 @@ def test_shared_storage_has_no_guest_account(requests_log):
 
 def test_anonymous_visitor_cannot_save_or_delete(requests_log):
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
-    at.button(key="ex_pill_0").click().run()  # an example pie, from the empty page
+    at.button(key="ex_pop_0").click().run()  # an example pie, from the Examples menu
     assert at.session_state.pie
     assert at.button(key="save_open").disabled  # saving needs a signed-in user
     assert "Load saved pie" in labels(at)
