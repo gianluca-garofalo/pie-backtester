@@ -626,23 +626,11 @@ with st.container(border=True):
                            ". Merge them into one row.")
 
     with right:
-        # one donut at a time; the names above it pick which loaded pie it shows, like a chart legend
-        own_df = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
-        donuts = {OWN: (own_df[own_df["Weight %"] > 0], st.session_state.own_color)} if st.session_state.pie else {}
-        for e in st.session_state.compare:
-            donuts[e["name"]] = (pd.DataFrame({"Ticker": list(e["weights"]), "Weight %": list(e["weights"].values()),
-                                               "Name": [e.get("names", {}).get(t, t) for t in e["weights"]]}),
-                                 e.get("color") or "#8a8d96")
-        if donuts:
+        dfp = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
+        dfp = dfp[dfp["Weight %"] > 0]
+        color = st.session_state.own_color
+        if not dfp.empty:
             st.markdown("**Allocation**")
-            shown = next(iter(donuts))
-            if len(donuts) > 1:
-                # pills wrap onto a second line, so long pie names stay readable
-                shown = st.pills("Show the allocation of", list(donuts), default=shown, required=True,
-                                 format_func=lambda n: st.session_state.pie_name or "My Pie" if n == OWN else n,
-                                 label_visibility="collapsed", wrap=True) or shown
-            dfp, color = donuts[shown]
-        if donuts and not dfp.empty:
             fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55, sort=False,
                                    marker=dict(colors=shades(color, len(dfp)),
                                                line=dict(color="#ffffff", width=2)),

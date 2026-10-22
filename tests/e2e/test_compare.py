@@ -81,14 +81,3 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
     app.load_example("All-World ETF")
     assert app.chips() == ["All-World ETF (editing)", "60/40 Stocks & Bonds"]
 
-
-def test_donut_picker_shows_another_pies_allocation(app):
-    app.load_example("Tech Leaders")
-    app.load_example("All-World ETF")
-    donut = app.page.get_by_test_id("stPlotlyChart").first
-    expect(donut).to_contain_text("VWCE.DE")
-    app.edit_weight(0, 50)  # your pie isn't at 100% now, and the picker still works
-    app.page.get_by_role("radiogroup", name="Show the allocation of").get_by_role("radio", name="Tech Leaders", exact=True).click()
-    app.wait()
-    expect(donut).to_contain_text("AAPL")
-    assert app.tickers() == ["VWCE.DE"]  # it only shows the pie; the editor keeps yours
