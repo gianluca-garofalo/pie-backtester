@@ -159,6 +159,11 @@ def flash(kind, msg):
     st.session_state.flash = (kind, msg)
 
 
+def amount_format(key):
+    """Number format for an amount field: "1000", or "10.12" once it has cents."""
+    return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
+
+
 def side_label(text):
     """A small upper-case section heading in the sidebar."""
     st.html(f'<div class="side-label">{text}</div>')
@@ -403,9 +408,10 @@ with settings_box:
     # the currency shows as an icon in the field when Material has one, otherwise in the label
     ccy_icon = CURRENCY_ICONS.get(base_ccy)
     ccy_label = "" if ccy_icon else f" ({base_ccy})"
-    initial = c_init.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format="%.0f",
+    # whole amounts without ".00", but cents stay visible when there are any (10.12)
+    initial = c_init.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format=amount_format("initial"),
                                   icon=ccy_icon, key="initial")
-    monthly = c_month.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format="%.0f",
+    monthly = c_month.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format=amount_format("monthly"),
                                    icon=ccy_icon, key="monthly")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")

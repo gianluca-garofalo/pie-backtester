@@ -233,3 +233,11 @@ def test_standard_actions_have_icons_and_words(app):
         button = app.page.get_by_role("button", name=name, exact=True)
         expect(button).to_be_visible()  # the word is the accessible name
         expect(button.get_by_test_id("stIconMaterial").first).to_be_visible()  # popovers add an arrow icon after it
+
+
+def test_amounts_keep_their_cents(app):
+    app.load_example("All-World ETF")
+    app.set_number("Monthly", 10.12)
+    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("10.12")
+    app.set_number("Monthly", 200)
+    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("200")  # no ".00" on whole amounts
