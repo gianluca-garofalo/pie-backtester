@@ -180,7 +180,6 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stDateInputCalendarButton]{padding:0}
 .st-key-rebalance [role=radiogroup]{flex-wrap:nowrap}
 .st-key-rebalance button{padding-left:0;padding-right:0;flex:1 1 0;min-width:0}
-.st-key-initial button,.st-key-monthly button{display:none}
 [data-testid=stSidebar] [data-testid=stExpander] details{border:none;background:none}
 [data-testid=stSidebar] [data-testid=stExpander] summary{padding:0;min-height:1.6rem}
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
@@ -412,13 +411,17 @@ with settings_box:
     initial = c_init.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format=amount_format("initial"),
                                   icon=ccy_icon, key="initial")
     monthly = c_month.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format=amount_format("monthly"),
-                                   icon=ccy_icon, key="monthly")
+                                   icon=ccy_icon, key="monthly",
+                                   help="Invested on the first trading day of each month, split by target weights.")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")
     rebalance = st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
-                                     format_func=REBALANCE_LABELS.get, width="stretch", key="rebalance")
+                                     format_func=REBALANCE_LABELS.get, width="stretch", key="rebalance",
+                                     help="Trading 212 pies don't rebalance automatically, so 'Never' matches them.")
     before_listing = st.radio("Assets that list later", list(engine.BEFORE_LISTING),
-                              format_func=engine.BEFORE_LISTING.get, key="before_listing")
+                              format_func=engine.BEFORE_LISTING.get, key="before_listing",
+                              help="If an ETF launched later (e.g. in 2025), waiting for it shortens the whole "
+                                   "backtest. Holding its slice as cash keeps the full period and buys it once it lists.")
 
 pie_data_raw = pie_payload() if st.session_state.pie else None
 examples = storage.list_examples()
@@ -623,12 +626,25 @@ with st.container(border=True):
                            ". Merge them into one row.")
 
     with right:
-        dfp = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
-        dfp = dfp[dfp["Weight %"] > 0]
-        if not dfp.empty:
+        # one donut at a time; the names above it pick which loaded pie it shows, like a chart legend
+        own_df = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
+        donuts = {OWN: (own_df[own_df["Weight %"] > 0], st.session_state.own_color)} if st.session_state.pie else {}
+        for e in st.session_state.compare:
+            donuts[e["name"]] = (pd.DataFrame({"Ticker": list(e["weights"]), "Weight %": list(e["weights"].values()),
+                                               "Name": [e.get("names", {}).get(t, t) for t in e["weights"]]}),
+                                 e.get("color") or "#8a8d96")
+        if donuts:
             st.markdown("**Allocation**")
+            shown = next(iter(donuts))
+            if len(donuts) > 1:
+                # pills wrap onto a second line, so long pie names stay readable
+                shown = st.pills("Show the allocation of", list(donuts), default=shown, required=True,
+                                 format_func=lambda n: st.session_state.pie_name or "My Pie" if n == OWN else n,
+                                 label_visibility="collapsed", wrap=True) or shown
+            dfp, color = donuts[shown]
+        if donuts and not dfp.empty:
             fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55, sort=False,
-                                   marker=dict(colors=shades(st.session_state.own_color, len(dfp)),
+                                   marker=dict(colors=shades(color, len(dfp)),
                                                line=dict(color="#ffffff", width=2)),
                                    hovertext=dfp["Name"],
                                    hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>"))
