@@ -149,7 +149,7 @@ def shades(color, n):
     r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
     out = []
     for i in range(n):
-        f = 0.7 * i / max(n - 1, 1)  # mix in up to 70% white
+        f = 0.5 * i / max(n - 1, 1)  # mix in up to 50% white, so the lightest still shows on white
         out.append("#%02x%02x%02x" % tuple(round(c + (255 - c) * f) for c in (r, g, b)))
     return out
 
@@ -631,8 +631,11 @@ with st.container(border=True):
                                    marker=dict(colors=shades(st.session_state.own_color, len(dfp)),
                                                line=dict(color="#ffffff", width=2)),
                                    hovertext=dfp["Name"],
-                                   hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>"))
-            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=300, showlegend=True,
+                                   hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>",
+                                   # ticker and weight next to each slice: shades alone are hard to tell apart
+                                   texttemplate="%{label}<br>%{value:.1~f}%", textposition="outside",
+                                   automargin=True))
+            fig.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=320, showlegend=False,
                               annotations=[dict(text="Target", x=0.5, y=0.5, showarrow=False, font_size=16)])
             st.plotly_chart(fig)
 
