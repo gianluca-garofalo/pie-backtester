@@ -42,45 +42,47 @@ def get_current_user(allow_guest: bool = True) -> dict[str, str] | None:
 
 
 def render_auth_ui(allow_guest: bool = True) -> dict[str, str] | None:
-    """Render the account area at the bottom of the sidebar.
+    """Render the one-line account area in the sidebar: "<name> · Log out" or "Guest · Sign in with Google".
 
     allow_guest=False when pies are stored in a shared database: every guest has the
     same id, so guests would see and delete each other's pies.
     """
     user = get_current_user(allow_guest)
-    if user:
-        with st.container(key="account", horizontal=True, vertical_alignment="center", gap="small"):
+    privacy = ("Only the pies you save are stored: tickers, names, weights and settings. "
+               "No brokerage credentials or financial accounts are ever accessed.")
+    if not user and not is_auth_configured() and not allow_guest:
+        # st.login() can only fail without secrets, so don't offer it
+        st.warning("Google sign-in isn't set up, so pies can't be saved (see README).")
+        return None
+    with st.container(key="account", horizontal=True, vertical_alignment="center", gap="small"):
+        if user:
             st.markdown(f"**{user.get('name') or user.get('email')}** ·", width="content")
-            if st.button("Log out", key="logout_btn", type="tertiary"):
+            if st.button("Log out", key="logout_btn", type="tertiary", help=privacy):
                 if st.session_state.get("custom_user") or not hasattr(st, "logout"):
                     st.session_state.pop("custom_user", None)
                     st.rerun()
                 st.logout()
-    elif not is_auth_configured():
-        # st.login() can only fail without secrets, so don't offer it
-        if not allow_guest:
-            st.warning("Google sign-in isn't set up, so pies can't be saved (see README).")
-        else:
-            st.caption("Google sign-in isn't set up (see README). Pies are saved on this machine.")
-            if st.button("Use guest account", key="guest_login_btn", width="stretch"):
+        elif not is_auth_configured():
+            st.markdown("Not signed in ·", width="content")
+            if st.button("Use guest account", key="guest_login_btn", type="tertiary",
+                         help="Google sign-in isn't set up (see README), so pies are saved on this machine."):
                 st.session_state["custom_user"] = dict(GUEST_USER)
                 st.rerun()
-    else:
-        st.caption("Sign in to save your pies and use them on any device.")
-        if st.button("Sign in with Google", key="login_btn", type="primary", width="stretch"):
-            try:
-                st.login("google")
-            except Exception as err:
-                st.session_state["auth_error"] = str(err)
+        else:
+            st.markdown("Guest ·", width="content")
+            if st.button("Sign in with Google", key="login_btn", type="tertiary",
+                         help="Save and manage your pies across devices. " + privacy):
+                try:
+                    st.login("google")
+                except Exception as err:
+                    st.session_state["auth_error"] = str(err)
 
     if st.session_state.get("auth_error"):
         st.warning(f"Google Auth error: {st.session_state['auth_error']}\n\n"
                    "Please check `.streamlit/secrets.toml` for `redirect_uri`, `cookie_secret`, "
                    "and `[auth.google]` settings (see README).")
-        if allow_guest and st.button("Use guest account", key="guest_after_error_btn", width="stretch"):
+        if allow_guest and st.button("Use guest account", key="guest_after_error_btn", type="tertiary"):
             st.session_state["custom_user"] = dict(GUEST_USER)
             st.session_state.pop("auth_error", None)
             st.rerun()
-    st.caption("Privacy: only the pies you save are stored (tickers, names, weights and settings). "
-               "No brokerage credentials or financial accounts are ever accessed.")
     return user

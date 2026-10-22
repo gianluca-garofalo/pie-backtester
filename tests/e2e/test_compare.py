@@ -80,4 +80,3 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
     app.load_example("60/40 Stocks & Bonds")
     app.load_example("All-World ETF")
     assert app.chips() == ["All-World ETF (editing)", "60/40 Stocks & Bonds"]
-
