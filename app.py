@@ -383,6 +383,21 @@ def save_dialog():
             st.error(f"Failed to save pie: {ex}")
 
 
+@st.dialog("Edit saved pie")
+def edit_dialog(pie):
+    """Rename a saved pie, or make it public or private."""
+    name = st.text_input("Name", value=pie["name"])
+    is_pub = st.toggle("Public", value=bool(pie.get("is_public")),
+                       help="Public pies are listed for everyone who opens the app, signed in or not.")
+    if st.button("Save changes", type="primary", key="edit_confirm", disabled=not name.strip()):
+        if active_storage.update_pie(pie["id"], user_id=user_id, name=name, is_public=is_pub):
+            if st.session_state.pie_name == pie["name"]:  # the open pie came from this one
+                st.session_state.pie_name = name.strip()
+            flash("success", f"Updated '{name.strip()}'" + (" (public)." if is_pub else "."))
+            st.rerun()
+        st.error(f"Could not update pie '{pie['name']}'.")
+
+
 # ---------------- sidebar: settings first, then your pies, then the account ----------------
 with st.sidebar:
     st.html(SIDEBAR_CSS)
@@ -442,15 +457,18 @@ with pies_box:
             sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i],
                                       label_visibility="collapsed")
             target_sp = saved_pies[sel_sp_idx]
-            c_load, c_del = st.columns(2)
-            if c_load.button("Load saved pie", width="stretch"):
-                load_pie(target_sp)
-                st.rerun()
-            if is_mine(target_sp) and c_del.button("Delete pie", width="stretch"):
-                if active_storage.delete_pie(target_sp["id"], user_id=user_id):
-                    flash("success", f"Deleted pie '{target_sp['name']}'.")
+            with st.container(horizontal=True, gap="small"):
+                if st.button("Load", key="load_saved", width="stretch"):
+                    load_pie(target_sp)
                     st.rerun()
-                st.error(f"Could not delete pie '{target_sp['name']}'.")
+                if is_mine(target_sp):
+                    if st.button("Edit", key="edit_saved", width="stretch", help="Rename, or make public"):
+                        edit_dialog(target_sp)
+                    if st.button("Delete", key="delete_saved", width="stretch"):
+                        if active_storage.delete_pie(target_sp["id"], user_id=user_id):
+                            flash("success", f"Deleted pie '{target_sp['name']}'.")
+                            st.rerun()
+                        st.error(f"Could not delete pie '{target_sp['name']}'.")
         else:
             st.caption("No saved pies yet. Use Save at the top to keep a pie.")
 

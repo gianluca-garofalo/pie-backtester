@@ -128,6 +128,10 @@ class StorageBackend(Protocol):
     def delete_pie(self, pie_id: str, user_id: str | None = None) -> bool:
         ...
 
+    def update_pie(self, pie_id: str, user_id: str | None = None, name: str | None = None,
+                   is_public: bool | None = None) -> bool:
+        ...
+
 
 class LocalStorageBackend:
     def __init__(self, filepath: str = LOCAL_STORAGE_FILE):
@@ -169,6 +173,19 @@ class LocalStorageBackend:
             self._write_all(pies)
             return True
         return False
+
+    def update_pie(self, pie_id: str, user_id: str | None = None, name: str | None = None,
+                   is_public: bool | None = None) -> bool:
+        """Rename and/or publish a saved pie. An empty name is refused."""
+        pies = self._read_all()
+        if pie_id not in pies or (name is not None and not name.strip()):
+            return False
+        if name is not None:
+            pies[pie_id]["name"] = name.strip()
+        if is_public is not None:
+            pies[pie_id]["is_public"] = bool(is_public)
+        self._write_all(pies)
+        return True
 
 
 EXAMPLES_DIR = os.path.join(os.path.dirname(__file__), "examples")
@@ -305,6 +322,28 @@ class SupabaseStorageBackend:
         except Exception:
             return False
         # PostgREST answers 200 even when the filter matched nothing (someone else's pie)
+        return resp.status_code == 200 and bool(resp.json())
+
+    def update_pie(self, pie_id: str, user_id: str | None = None, name: str | None = None,
+                   is_public: bool | None = None) -> bool:
+        """Rename and/or publish a saved pie; only its owner can. An empty name is refused."""
+        if not user_id or (name is not None and not name.strip()):
+            return False
+        rows = self._select({"id": f"eq.{pie_id}", "owner_id": f"eq.{user_id}"})
+        if not rows:  # not found, or someone else's pie
+            return False
+        # name and is_public live in their columns and inside config, so both change
+        changes = {}
+        if name is not None:
+            changes["name"] = name.strip()
+        if is_public is not None:
+            changes["is_public"] = bool(is_public)
+        config = {k: v for k, v in rows[0].items() if k != "owner_id"} | changes
+        try:
+            resp = requests.patch(self.table, params={"id": f"eq.{pie_id}", "owner_id": f"eq.{user_id}"},
+                                  json={**changes, "config": config}, headers=self._headers(), timeout=5)
+        except Exception:
+            return False
         return resp.status_code == 200 and bool(resp.json())
 
 

@@ -137,3 +137,26 @@ def test_a_successful_read_clears_the_error(db, calls):
     assert db.last_error.startswith("HTTP 500")
     db.list_pies()
     assert db.last_error is None
+
+
+def test_rename_and_publish_are_scoped_to_the_owner(db, calls):
+    row = {"id": "p1", "owner_id": "google:123", "name": "Old", "config": PIE}
+    calls.replies += [Resp(rows=[row]), Resp(rows=[dict(row, name="New")])]
+    assert db.update_pie("p1", user_id="google:123", name=" New ", is_public=True)
+    patch = calls[1]
+    assert patch["method"] == "patch"
+    assert patch["params"] == {"id": "eq.p1", "owner_id": "eq.google:123"}
+    assert (patch["json"]["name"], patch["json"]["is_public"]) == ("New", True)
+    assert (patch["json"]["config"]["name"], patch["json"]["config"]["is_public"]) == ("New", True)
+
+
+def test_rename_of_someone_elses_pie_does_nothing(db, calls):
+    calls.replies.append(Resp(rows=[]))  # the owner filter matches nothing
+    assert not db.update_pie("p1", user_id="google:456", name="Mine now")
+    assert [c["method"] for c in calls] == ["get"]
+
+
+def test_update_needs_a_user_and_a_name(db, calls):
+    assert not db.update_pie("p1", name="New")
+    assert not db.update_pie("p1", user_id="google:123", name="   ")
+    assert calls == []

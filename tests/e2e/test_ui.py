@@ -110,13 +110,22 @@ def test_save_load_delete(app):
     app.click("Clear pie")
     app.open_sidebar_section("Saved pies")
     app.choose("Saved pies", "E2E save test (3 assets)")
-    app.click("Load saved pie", root=app.sidebar)
+    app.click("Load", root=app.sidebar, exact=True)
     assert app.tickers() == [a["ticker"] for a in EXAMPLES["Three-Fund Portfolio"]["assets"]]
     assert app.chips() == ["E2E save test (editing)"]
 
-    app.click("Delete pie", root=app.sidebar)
-    expect(app.page.get_by_text("Deleted pie 'E2E save test'.")).to_be_visible()
-    expect(app.page.get_by_role("option", name="E2E save test (3 assets)")).to_have_count(0)
+    app.click("Edit", root=app.sidebar, exact=True)
+    dialog = app.page.get_by_role("dialog")
+    dialog.get_by_label("Name").fill("E2E renamed")
+    dialog.get_by_text("Public").click()
+    dialog.get_by_role("button", name="Save changes").click()
+    app.wait()
+    expect(app.page.get_by_text("Updated 'E2E renamed' (public).")).to_be_visible()
+    assert app.chips() == ["E2E renamed (editing)"]  # the open pie follows the new name
+
+    app.click("Delete", root=app.sidebar, exact=True)
+    expect(app.page.get_by_text("Deleted pie 'E2E renamed'.")).to_be_visible()
+    expect(app.page.get_by_role("option", name="E2E renamed (3 assets)")).to_have_count(0)
 
 
 def test_export_then_import(app, tmp_path):

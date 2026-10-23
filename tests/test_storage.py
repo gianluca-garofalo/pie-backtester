@@ -100,3 +100,14 @@ def test_normalize_pie_null_name_falls_back_to_ticker():
     norm = normalize_pie({"assets": [{"ticker": "vwce.de", "weight": 100.0, "name": None}]})
     assert norm["assets"][0]["name"] == "VWCE.DE"
 
+
+
+def test_local_rename_and_publish(tmp_path):
+    store = LocalStorageBackend(filepath=str(tmp_path / "pies.json"))
+    saved = store.save_pie({"name": "Old", "assets": [{"ticker": "VWCE.DE", "weight": 100.0}]})
+    assert store.update_pie(saved["id"], name="  New name ")
+    assert store.update_pie(saved["id"], is_public=True)
+    pie = store.get_pie(saved["id"])
+    assert (pie["name"], pie["is_public"]) == ("New name", True)
+    assert not store.update_pie(saved["id"], name="  ")  # an empty name is refused
+    assert not store.update_pie("no-such-id", name="X")
