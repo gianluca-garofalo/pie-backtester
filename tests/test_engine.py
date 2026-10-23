@@ -106,18 +106,6 @@ def _prices():
     }, index=dates)
 
 
-def test_comparison_table_has_one_row_per_pie():
-    res = {name: engine.simulate_pie(_prices(), w, "2023-01-02", initial=1000)
-           for name, w in {"Up": {"OLD": 100}, "Flat": {"FLAT": 100}, "Late": {"NEW": 100}}.items()}
-    table = engine.comparison_table(res)
-    assert list(table["Pie"]) == ["Up", "Flat", "Late"]
-    # each pie starts when it has prices; the table shows from when
-    assert [str(d) for d in table["From"]] == ["2023-01-02", "2023-01-02", "2023-01-05"]
-    assert table.loc[0, "Final value"] == pytest.approx(1500)
-    assert table.loc[0, "Return %"] == pytest.approx(50)
-    assert table.loc[1, "Max drawdown %"] == pytest.approx(0)
-
-
 def test_per_asset_gains_add_up_to_the_pies_gain():
     dates = pd.date_range("2023-01-02", periods=70, freq="D")
     prices = pd.DataFrame({"UP": [100 + i for i in range(70)],

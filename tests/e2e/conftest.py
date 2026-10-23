@@ -110,26 +110,52 @@ class App:
         option.click()
         self.wait()
 
-    # --- the pie strip: one chip per loaded pie ---
-    def chip_key(self, name):
-        for el in self.page.locator("[class*='st-key-chip_name_']").all():
-            if el.inner_text().strip() == name:
-                cls = next(c for c in el.get_attribute("class").split() if c.startswith("st-key-chip_name_"))
-                return cls.removeprefix("st-key-chip_name_")
-        return None
+    # --- pie cards: one per loaded pie, side by side; "own" is the pie that's open for editing ---
+    def card_keys(self):
+        """Pie name -> card key ("own" or the compared pie's index), in the order on screen."""
+        out = {}
+        for el in self.page.locator("[class*='st-key-pie_card_']").all():
+            cls = next(c for c in el.get_attribute("class").split() if c.startswith("st-key-pie_card_"))
+            out[el.locator(".card-name").first.inner_text().strip()] = cls.removeprefix("st-key-pie_card_")
+        return out
 
-    def chips(self):
-        return [el.inner_text().strip() for el in self.page.locator("[class*='st-key-chip_name_']").all()]
+    def cards(self):
+        return list(self.card_keys())
+
+    def editing(self):
+        """The name of the open pie."""
+        return next((n for n, k in self.card_keys().items() if k == "own"), None)
+
+    def card(self, name):
+        return self.page.locator(f".st-key-pie_card_{self.card_keys()[name]}")
 
     def open_pie(self, name):
-        self.page.locator(f".st-key-chip_name_{self.chip_key(name)} button").first.click()
+        self.card(name).get_by_role("button", name="Edit", exact=True).click()
         self.wait()
 
     def remove_pie(self, name):
-        # the ✕ is icon-only, but its accessible name says what it does
-        self.page.locator(f".st-key-chip_x_{self.chip_key(name)}").get_by_role(
-            "button", name=f"Remove {name}", exact=True).click()
+        self.card(name).get_by_role("button", name="Remove", exact=True).click()
         self.wait()
+
+    ROWS = {"value": "Value now", "return": "Return", "per_year": "Per year", "worst_fall": "Worst fall"}
+
+    def results(self, name=None):
+        """A pie's result rows, e.g. {"Value now": "€17k", "Return": "+135.5%", ...}; {} when it has none.
+        Default: the open pie."""
+        k = "own" if name is None else self.card_keys().get(name)
+        card = self.page.locator(f".st-key-result_{k}")
+        if not card.count():
+            return {}
+        return {label: card.locator(f".st-key-val_{k}_{row}").inner_text().strip()
+                for row, label in self.ROWS.items() if card.locator(f".st-key-val_{k}_{row}").count()}
+
+    def metrics(self):
+        return self.results()
+
+    def window(self, name=None):
+        """The period a pie's results cover, e.g. "29 Jul 2019 – 23 Oct 2026 · 7.2 yrs"."""
+        k = "own" if name is None else self.card_keys()[name]
+        return self.page.locator(f".st-key-window_{k}").inner_text().strip()
 
     def save_pie(self, name):
         self.page.get_by_role("button", name="Save", exact=True).click()
@@ -227,6 +253,7 @@ class App:
 
     def edit_weight(self, row, value):
         self.rows()  # the grid is interactive once its accessible table is filled
+        self.grid.scroll_into_view_if_needed()  # the clicks below are at screen coordinates
         box = self.grid.bounding_box()
         for _ in range(5):
             # canvas cell: row marker and the narrow Ticker column come first
@@ -244,14 +271,6 @@ class App:
         self.page.wait_for_timeout(300)  # the number editor applies typed text with a delay
         self.page.keyboard.press("Enter")
         self.wait()
-
-    def metrics(self):
-        """Tile label -> value, e.g. {"Value now": "$22.8k", ...}."""
-        out = {}
-        for m in self.page.get_by_test_id("stMetric").all():
-            label = m.get_by_test_id("stMetricLabel").inner_text().strip()
-            out[label] = m.get_by_test_id("stMetricValue").inner_text().strip()
-        return out
 
     @staticmethod
     def amount(text):

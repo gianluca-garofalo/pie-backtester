@@ -82,7 +82,8 @@ def test_anonymous_visitor_cannot_save_or_delete(requests_log):
     assert at.button(key="save_open").disabled  # saving needs a signed-in user
     at.selectbox(key="saved_pick").select("p-other").run()  # picking a pie opens it
     assert [a["Ticker"] for a in at.session_state.pie] == ["VWCE.DE"]
-    assert "Delete" not in labels(at) and "Edit" not in labels(at)  # someone else's public pie
+    keys = [b.key for b in at.button]
+    assert "delete_saved" not in keys and "edit_saved" not in keys  # someone else's public pie
 
 
 def test_old_anon_key_secret_falls_back_with_a_warning(requests_log):

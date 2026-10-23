@@ -3,48 +3,48 @@ import json
 from playwright.sync_api import expect
 
 
-def comparison_rows(app):
-    return app.rows(app.page.get_by_test_id("stDataFrame").last)
+def copy_pie(app, name):
+    app.card(name).get_by_role("button", name="Copy", exact=True).click()
+    app.wait()
 
 
 def test_loading_another_pie_keeps_the_previous_one(app):
     app.load_example("All-World ETF")
-    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
+    assert app.cards() == ["All-World ETF"]
 
     app.load_example("60/40 Stocks & Bonds")
-    assert app.chips() == ["All-World ETF", "60/40 Stocks & Bonds (editing)"]  # in the order they were loaded
+    assert app.cards() == ["All-World ETF", "60/40 Stocks & Bonds"]  # in the order they were loaded
+    assert app.editing() == "60/40 Stocks & Bonds"
     expect(app.page.get_by_test_id("stAlert")).to_have_count(0)  # no banner about it
-    assert [r[0] for r in comparison_rows(app)] == ["All-World ETF", "60/40 Stocks & Bonds (editing)"]  # chip order
-    assert app.metrics()  # tiles are for the pie being edited
+    assert app.results("All-World ETF") and app.results("60/40 Stocks & Bonds")  # a results card each
 
     app.remove_pie("All-World ETF")
-    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
+    assert app.cards() == ["60/40 Stocks & Bonds"]
     assert app.metrics()
 
 
 def test_reloading_the_same_pie_does_not_duplicate_it(app):
     app.load_example("All-World ETF")
     app.load_example("All-World ETF")
-    assert app.chips() == ["All-World ETF (editing)"]
+    assert app.cards() == ["All-World ETF"]
 
 
 def test_snapshot_of_your_own_pie(app):
     app.load_example("Tech Leaders")
-    app.click("Compare a copy")
-    rows = comparison_rows(app)
-    assert [r[0] for r in rows] == ["Tech Leaders (editing)", "Tech Leaders (copy)"]
-    assert rows[0][1:] == rows[1][1:]  # an untouched copy performs exactly like your pie
-    app.page.get_by_role("button", name="Compare a copy").click()  # again: nothing new to compare
+    copy_pie(app, "Tech Leaders")
+    assert app.cards() == ["Tech Leaders", "Tech Leaders (copy)"]
+    assert app.results("Tech Leaders") == app.results("Tech Leaders (copy)")  # an untouched copy performs the same
+    copy_pie(app, "Tech Leaders")  # again: nothing new to compare
     expect(app.page.get_by_text("This pie is already in the comparison as 'Tech Leaders (copy)'.")).to_be_visible()
     app.wait()
 
     app.edit_weight(0, 70)  # weights now add up to 120%
-    expect(app.page.get_by_text("Your pie appears here once")).to_be_visible()
+    expect(app.page.locator(".st-key-result_own")).to_contain_text("once its weights add up to 100%")
 
 
 def test_a_copy_keeps_the_fund_names(app):
     app.load_example("Tech Leaders")
-    app.click("Compare a copy")
+    copy_pie(app, "Tech Leaders")
     app.click("Split evenly")  # make the two differ, so switching keeps both
     app.open_pie("Tech Leaders (copy)")
     assert [r[2] for r in app.rows()] == ["iShares S&P 500 Information Technology Sector UCITS ETF",
@@ -56,8 +56,9 @@ def test_clicking_a_compared_pie_opens_it(app):
     app.load_example("Tech Leaders")
     app.open_pie("All-World ETF")
     assert app.tickers() == ["VWCE.DE"]
-    assert app.chips() == ["All-World ETF (editing)", "Tech Leaders"]
-    expect(app.page.get_by_test_id("stPlotlyChart").first).to_contain_text("VWCE.DE")  # the donut
+    assert app.cards() == ["All-World ETF", "Tech Leaders"]
+    assert app.editing() == "All-World ETF"
+    expect(app.card("All-World ETF").get_by_test_id("stPlotlyChart")).to_contain_text("VWCE.DE")  # its donut
 
 
 def test_compared_pies_share_the_plan(app):
@@ -65,7 +66,29 @@ def test_compared_pies_share_the_plan(app):
     app.load_example("Three-Fund Portfolio")
     app.set_plan(initial=5000, monthly=0)
     expect(app.plan).to_contain_text("€5,000 to start · no monthly deposits")
-    expect(app.page.get_by_text("Every pie had €5,000.00 put in.")).to_be_visible()
+    expect(app.page.get_by_text("€5k put in each")).to_be_visible()
+
+
+def test_results_cards_mark_the_best(app):
+    for name in ("All-World ETF", "60/40 Stocks & Bonds", "Tech Leaders"):
+        app.load_example(name)
+    app.set_date("From", "2018-01-01")
+    for name in app.cards():  # the shared window: VWCE.DE lists on 29 Jul 2019
+        assert app.window(name).startswith("29 Jul 2019 – "), app.window(name)
+    expect(app.page.locator(".st-key-best_own_value")).to_have_text("best")  # Tech Leaders grew the most
+    expect(app.page.locator("[class*='st-key-best_']")).to_have_count(4)  # one per row
+
+
+def test_on_its_own_line(app):
+    for name in ("All-World ETF", "Tech Leaders"):
+        app.load_example(name)
+    app.set_date("From", "2018-01-01")
+    card = app.page.locator(".st-key-result_own")
+    expect(card).to_contain_text("On its own, from 2 Jan 2018:")  # the days the shared window cut off
+    card.get_by_role("button", name="Each from its own start").click()
+    app.wait()
+    assert app.window("Tech Leaders").startswith("2 Jan 2018 – ")
+    expect(app.page.locator("[class*='st-key-best_']")).to_have_count(0)  # different periods aren't ranked
 
 
 def start_choice(app):
@@ -78,20 +101,20 @@ def test_late_listing_choice_card(app):
     app.set_date("From", "2015-01-01")
     # VWCE.DE lists in 2019, so by default every pie starts then: same days, same money, rankable
     expect(start_choice(app).get_by_role("radio", name="Start all pies on 29 Jul 2019")).to_be_checked()
-    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
-                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2019-07-29"})
+    app.eventually(lambda: {n: app.window(n)[:11] for n in app.cards()},
+                   {"Tech Leaders": "29 Jul 2019", "All-World ETF": "29 Jul 2019"})
     expect(app.page.get_by_text("Every number and chart below covers 29 Jul 2019 – ")).to_be_visible()
     expect(app.page.get_by_text("VWCE.DE has prices from 29 Jul 2019")).to_be_visible()
 
     start_choice(app).get_by_text("Each pie from its own first price").click()
     app.wait()
-    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
-                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
+    app.eventually(lambda: {n: app.window(n)[:11] for n in app.cards()},
+                   {"Tech Leaders": "3 Dec 2015 ", "All-World ETF": "29 Jul 2019"})
 
     start_choice(app).get_by_text("Start on 1 Jan 2015, holding cash until VWCE.DE lists").click()
     app.wait()
-    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
-                   {"All-World ETF (editing)": "2015-01-01", "Tech Leaders": "2015-01-01"})
+    app.eventually(lambda: {n: app.window(n)[:10] for n in app.cards()},
+                   {"Tech Leaders": "1 Jan 2015", "All-World ETF": "1 Jan 2015"})
     expect(start_choice(app).get_by_text("changes the strategy")).to_be_visible()
     expect(app.page.get_by_text("Started later, with the average value")).to_have_count(0)  # that rule is gone
 
@@ -102,7 +125,7 @@ def test_start_choice_is_kept_while_the_card_is_hidden(app):
     app.set_date("From", "2016-01-01")
     start_choice(app).get_by_text("Each pie from its own first price").click()
     app.wait()
-    app.remove_pie("All-World ETF (editing)")  # nothing lists late now, so the card goes
+    app.remove_pie("All-World ETF")  # nothing lists late now, so the card goes
     expect(start_choice(app)).to_have_count(0)
     app.load_example("All-World ETF")
     expect(start_choice(app).get_by_role("radio", name="Each pie from its own first price")).to_be_checked()
@@ -122,11 +145,10 @@ def test_every_loaded_pie_can_be_removed(app):
     # two examples loaded one after the other: both get a ✕, including the one being edited
     app.load_example("All-World ETF")
     app.load_example("60/40 Stocks & Bonds")
-    app.remove_pie("60/40 Stocks & Bonds (editing)")
-    # the other pie opens in the editor, keeping the sidebar settings
+    app.remove_pie("60/40 Stocks & Bonds")
+    # the other pie opens in the editor, keeping the plan
     assert app.tickers() == ["VWCE.DE"]
-    assert app.chips() == ["All-World ETF (editing)"]
-    expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
+    assert app.cards() == ["All-World ETF"] and app.editing() == "All-World ETF"
     assert app.metrics()
 
 
@@ -134,7 +156,8 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
     app.load_example("All-World ETF")
     app.load_example("60/40 Stocks & Bonds")
     app.load_example("All-World ETF")
-    assert app.chips() == ["All-World ETF (editing)", "60/40 Stocks & Bonds"]
+    assert app.cards() == ["All-World ETF", "60/40 Stocks & Bonds"]
+    assert app.editing() == "All-World ETF"
 
 
 def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
@@ -152,41 +175,43 @@ def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):
     names = ["All-World ETF", "Dividend Focus", "60/40 Stocks & Bonds", "Tech Leaders", "Three-Fund Portfolio"]
     for name in names:
         app.load_example(name)
-    before = app.chips()
+    before = app.cards()
     assert len(before) == 5
     path = tmp_path / "sixth.json"
     path.write_text(json.dumps({"name": "Sixth", "assets": [{"ticker": "EIMI.L", "weight": 100}]}))
     app.open_sidebar_section("Import / export JSON")
     app.sidebar.locator("input[type=file]").set_input_files(path)
     app.wait()
-    expect(app.page.get_by_text("Remove one with ✕ first, then open 'Sixth'.")).to_be_visible()
-    assert app.chips() == before  # the pie being edited used to be dropped here
+    expect(app.page.get_by_text("Remove one first, then open 'Sixth'.")).to_be_visible()
+    assert app.cards() == before  # the pie being edited used to be dropped here
 
 
-def test_chips_keep_their_place_when_switching(app):
-    for name in ("All-World ETF", "Tech Leaders", "60/40 Stocks & Bonds"):
+def test_cards_keep_their_place_when_switching(app):
+    order = ["All-World ETF", "Tech Leaders", "60/40 Stocks & Bonds"]
+    for name in order:
         app.load_example(name)
-    assert app.chips() == ["All-World ETF", "Tech Leaders", "60/40 Stocks & Bonds (editing)"]
+    assert app.cards() == order and app.editing() == "60/40 Stocks & Bonds"
     app.open_pie("All-World ETF")
-    assert app.chips() == ["All-World ETF (editing)", "Tech Leaders", "60/40 Stocks & Bonds"]
+    assert app.cards() == order and app.editing() == "All-World ETF"
     app.open_pie("Tech Leaders")
-    assert app.chips() == ["All-World ETF", "Tech Leaders (editing)", "60/40 Stocks & Bonds"]
+    assert app.cards() == order and app.editing() == "Tech Leaders"
 
 
 def test_phone_layout(phone):
     phone.load_example("All-World ETF")
     phone.load_example("Tech Leaders")
-    chart = phone.page.get_by_test_id("stPlotlyChart").nth(1)  # the Growth chart (the donut is first)
-    expect(chart.locator(".legend")).to_have_count(1)  # a legend below instead of labels on the right
+    chart = phone.page.locator("[class*='st-key-growth_']")  # the Growth chart
+    expect(chart.locator(".legend")).to_have_count(1)  # a legend instead of labels on the right
     expect(chart.locator(".annotation-text")).to_have_count(0)
-    table = phone.page.get_by_test_id("stDataFrame").last
-    table.scroll_into_view_if_needed()  # tables below the fold are drawn when they come into view
-    phone.eventually(lambda: [h.strip() for h in table.locator("thead [role=columnheader]").all_text_contents()
-                              if h.strip()], ["Pie", "Value", "Return", "Per year"])
-    box = phone.page.get_by_role("button", name="Remove All-World ETF", exact=True).bounding_box()
-    assert box["width"] >= 36 and box["height"] >= 36  # a finger-sized ✕
-    scroller = table.locator(".dvn-scroller").first  # the table's scroll area: no sideways scroll needed
-    assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "the columns don't fit"
+    # one card per pie, with its donut and its results together
+    for name in ("All-World ETF", "Tech Leaders"):
+        card = phone.card(name)
+        expect(card.get_by_test_id("stPlotlyChart")).to_have_count(1)
+        expect(card.locator("[class*='st-key-result_']")).to_have_count(1)
+    expect(phone.page.locator(".st-key-results")).to_have_count(0)  # no separate results row
+    box = phone.card("All-World ETF").get_by_role("button", name="Remove", exact=True).bounding_box()
+    assert box["width"] >= 36 and box["height"] >= 36  # finger-sized
+    assert phone.page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "sideways scroll"
     phone.page.get_by_role("button", name="Share").click()
     share = phone.page.get_by_test_id("stPopoverBody")
     copy = share.frame_locator("iframe").locator("#b")
@@ -203,4 +228,4 @@ def test_an_unfinished_pie_that_cant_join_says_so(app):
     expect(app.page.get_by_text("'60/40 Stocks & Bonds' was closed: its weights add up to 70.00%")).to_be_visible(
         timeout=20_000)
     app.wait()
-    assert app.chips() == ["All-World ETF (editing)"]
+    assert app.cards() == ["All-World ETF"]

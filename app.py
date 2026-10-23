@@ -114,7 +114,7 @@ def load_pie(cfg):
               and not any(e["weights"] == previous for e in others))
     if moving and len(others) >= MAX_COMPARED - 1:
         flash("warning", f"You can compare up to {MAX_COMPARED} pies, including the one you're editing. "
-                         f"Remove one with ✕ first, then open '{md(cfg.get('name') or 'Pie')}'.")
+                         f"Remove one first, then open '{md(cfg.get('name') or 'Pie')}'.")
         return False
     st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     already = next((e for e in st.session_state.compare if e["weights"] == loaded), None)
@@ -321,6 +321,9 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
+.card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.big-number{font-size:1.9rem;font-weight:700;line-height:1.2}
+@media (pointer:coarse){[class*='st-key-pie_card_'] button{min-width:36px;min-height:36px}}  /* finger-sized */
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* secondary text at 78% of the text colour (about 6:1 on white, still fine in dark mode); Streamlit's
    own grey was about 3.5:1, under the 4.5:1 that WCAG asks for */
@@ -450,7 +453,7 @@ def add_to_comparison(cfg, color=None, order=None, saved_ref=None):
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
         flash("warning", f"'{md(cfg.get('name') or 'Pie')}' wasn't kept: you can compare up to {MAX_COMPARED} "
-                         "pies, including yours. Remove one with ✕ first.")
+                         "pies, including yours. Remove one first.")
         return
     weights, names = {}, {}
     for a in cfg.get("assets", []):
@@ -799,7 +802,7 @@ with st.container(border=True, key="plan", horizontal=True, vertical_alignment="
         st.session_state.plan_ccy = base_ccy
         plan_dialog()
 
-strip = st.container()  # the pie chips; filled after the table so they see this run's edits
+pies_slot = st.container()  # the pie cards; filled after the table and the results, so they show this run's
 
 # ---------------- your pie: search, table, total and the allocation donut ----------------
 with st.container(border=True):
@@ -879,12 +882,6 @@ with st.container(border=True):
                 if st.button("Scale to 100%", disabled=storage.adds_up(total_w) or total_w == 0):
                     scale_to_100()
                     st.rerun()
-                if st.button("Compare a copy", disabled=not storage.adds_up(total_w),
-                             help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
-                    add_to_comparison({"name": f"{st.session_state.pie_name} (copy)", "assets": [
-                        {"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
-                        for a in st.session_state.pie]})
-                    st.rerun()
                 if st.button("Clear pie"):
                     st.session_state.pie, st.session_state.fix_report = [], None
                     pie_changed()
@@ -952,61 +949,6 @@ else:
 export_slot.download_button("Download pie (.json)", pie_json, icon=":material/download:", file_name="my_pie.json",
                             mime="application/json", disabled=not st.session_state.pie)
 
-# ---------------- the pie strip: one chip per loaded pie, in its colour ----------------
-own_complete = bool(st.session_state.pie) and storage.adds_up(total_w)
-chips = sorted(([(st.session_state.own_order, "own", OWN, st.session_state.own_color)] if st.session_state.pie else [])
-               + [(e.get("order", 0), str(i), e["name"], e.get("color") or "#8a8d96")
-                  for i, e in enumerate(st.session_state.compare)])
-chips = [(k, name, c) for _, k, name, c in chips]  # in the order the pies came on screen
-with strip:
-    if chips:
-        # Streamlit buttons can't be coloured, so each chip's container gets a small CSS rule
-        st.html("<style>" + "".join(
-            f".st-key-chip_{k}{{border-color:{c} !important;border-radius:999px !important;padding:0 10px !important}}"
-            f".st-key-chip_name_{k} p::before{{content:'●';content:'●' / '';color:{c};margin-right:6px}}"  # '/ ""': not read out
-            for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}"
-            # a long name is cut with "…", so the ✕ stays on the chip's line
-            "[class*='st-key-chip_name_'] p{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
-            # ✕ shows only its icon; the label stays for screen readers ("Remove <pie>")
-            "[class*='st-key-chip_x_'] [data-testid=stMarkdownContainer]{position:absolute;width:1px;height:1px;"
-            "overflow:hidden;clip-path:inset(50%);white-space:nowrap}"
-            # touch screens: a finger-sized ✕
-            "@media (pointer:coarse){[class*='st-key-chip_x_'] button{min-width:36px;min-height:36px}}</style>")
-        with st.container(horizontal=True, vertical_alignment="center"):
-            for k, name, c in chips:
-                with st.container(key=f"chip_{k}", border=True, horizontal=True, width="content",
-                                  vertical_alignment="center", gap=None):
-                    if k == "own":
-                        st.button(md(name), key="chip_name_own", type="tertiary", help="The pie in the table below")
-                    elif st.button(md(name), key=f"chip_name_{k}", type="tertiary", disabled=not own_complete,
-                                   help="Edit this pie" if own_complete else
-                                   "Finish the pie you're editing (weights at 100%) before switching"):
-                        open_compared(int(k))
-                        st.rerun()
-                    if st.button(f"Remove {md(name)}", key=f"chip_x_{k}", type="tertiary", icon=":material/close:",
-                                 help=f"Remove {name}"):
-                        if k == "own":
-                            close_open_pie()
-                        else:
-                            st.session_state.compare.pop(int(k))
-                        st.rerun()
-            # whether the pie being edited matches its saved version
-            ref = st.session_state.saved_ref
-            if not st.session_state.pie:
-                status = ""
-            elif not ref:
-                status = "Not saved yet · "
-            elif pie_key(st.session_state.pie_name, [(a["Ticker"], a["Weight %"] or 0)
-                                                     for a in st.session_state.pie]) == ref["key"]:
-                status = "Saved · "
-            else:
-                status = "Unsaved changes · "
-            st.caption(status + f"{len(chips)} of {MAX_COMPARED} pies"
-                       + (" · click a pie to edit it" if len(chips) > 1 else ""))
-            if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
-                st.session_state.compare = []
-                st.rerun()
-
 # ---------------- results ----------------
 # Results update by themselves: no run button. Your pie is shown once it's valid, next to any compared pies.
 pie = [a for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]
@@ -1018,12 +960,11 @@ names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}
 entries = ([(OWN, tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if own_ready else []) + \
     [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
 
-results, late, currencies, first_full = {}, {}, {}, {}
+results, late, currencies, first_full, no_window = {}, {}, {}, {}, {}
 rule = st.session_state.start_rule
 if settings_ok and entries:
     with st.spinner("Loading prices and simulating…"):
         # each pie's first day with every price in the period, and its assets that list after From
-        first_full, no_window = {}, {}
         for name, assets in entries:
             try:
                 prices, info = prices_for([t for t, _ in assets], start, date.today(), base_ccy)
@@ -1045,8 +986,6 @@ if settings_ok and entries:
         days = (dict.fromkeys(first_full, pd.Timestamp(start)) if rule == "cash"
                 else engine.start_days(first_full, "common" if rule == "common" and len(first_full) > 1 else "own"))
         for name, assets in entries:
-            if name in no_window:
-                (st.warning if name == OWN else st.caption)(f"'{md(name)}': {md(no_window[name])}.")
             if name not in days:
                 continue
             try:
@@ -1104,7 +1043,8 @@ def pick_start_rule():
 
 
 with period_detail:
-    shown_pies = [n for n, _ in entries if n in late or n in results]
+    place = {OWN: st.session_state.own_order} | {e["name"]: e.get("order", 0) for e in st.session_state.compare}
+    shown_pies = sorted([n for n, _ in entries if n in late or n in results], key=place.get)  # the cards' order
     if late and shown_pies:
         screen_reader_text("Which days each pie has prices for: " + "; ".join(
             f"{plain_name(n)} from {nice(results[n]['total'].index[0])}" for n in shown_pies if n in results) + ".")
@@ -1151,47 +1091,223 @@ with period_detail:
                  captions=[captions[o] for o in options], label_visibility="collapsed", on_change=pick_start_rule)
 own = results.get(OWN)
 
+# ---------------- pies and their results, as cards side by side ----------------
+phone = on_phone()
+own_complete = bool(st.session_state.pie) and storage.adds_up(total_w)
+card_keys = [k for _, k in sorted(([(st.session_state.own_order, "own")] if st.session_state.pie else [])
+                                  + [(e.get("order", 0), str(i)) for i, e in enumerate(st.session_state.compare)])]
+card_name = {k: OWN if k == "own" else st.session_state.compare[int(k)]["name"] for k in card_keys}
+assets_of = dict(entries)
+by_pie = {n: engine.metrics(r) for n, r in results.items()}
+BEST_ROW = {"final_value": "value", "twr_total": "return", "cagr": "per_year", "max_drawdown": "worst_fall"}
+# the rows each pie is best at; pies over different periods aren't ranked
+marks = {n: {BEST_ROW[m] for m in ms} for n, ms in engine.best_marks(by_pie).items()} if rule != "own" or not late else {}
+CARD_COLUMNS = 3  # a lone pie doesn't stretch across the page
+
+
+def card_rows(k):
+    """(ticker, name, weight) of a card's pie, biggest first."""
+    if k == "own":
+        rows = [(a["Ticker"], a.get("Name") or a["Ticker"], float(a["Weight %"] or 0)) for a in st.session_state.pie]
+    else:
+        e = st.session_state.compare[int(k)]
+        rows = [(t, e.get("names", {}).get(t, t), w) for t, w in e["weights"].items()]
+    return sorted([r for r in rows if r[2] > 0], key=lambda r: -r[2])
+
+
+def donut(rows, color, height):
+    """The pie's target weights, in shades of its colour, with the ticker and weight next to each slice."""
+    fig = go.Figure(go.Pie(labels=[r[0] for r in rows], values=[r[2] for r in rows], hole=0.55, sort=False,
+                           marker=dict(colors=shades(color, len(rows)), line=dict(color="#ffffff", width=2)),
+                           hovertext=[r[1] for r in rows],
+                           hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>",
+                           # shades alone are hard to tell apart
+                           texttemplate="%{label}<br>%{value:.1~f}%", textposition="outside", automargin=True))
+    fig.update_layout(margin=dict(t=16, b=16, l=16, r=16), height=height, showlegend=False,
+                      annotations=[dict(text="Target", x=0.5, y=0.5, showarrow=False, font_size=13)])
+    return fig
+
+
+def status_of(k):
+    """Saved / Unsaved changes / Not saved yet, and the badge colour."""
+    ref = st.session_state.saved_ref if k == "own" else st.session_state.compare[int(k)].get("saved_ref")
+    if not ref:
+        return "Not saved yet", "orange"
+    if k != "own":
+        return "Saved", "green"
+    same = pie_key(st.session_state.pie_name, [(a["Ticker"], a["Weight %"] or 0) for a in st.session_state.pie])
+    return ("Saved", "green") if same == ref["key"] else ("Unsaved changes", "orange")
+
+
+def card_name_html(k):
+    st.html(f'<div class="card-name">{html.escape(plain_name(card_name[k]))}</div>')
+
+
+def pie_card(k):
+    """A pie's card: name, saved state, actions and its donut (on a phone also its results)."""
+    name, rows = card_name[k], card_rows(k)
+    with st.container(border=True, key=f"pie_card_{k}"):
+        card_name_html(k)
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            status, color = status_of(k)
+            with st.container(key=f"status_{k}", width="content"):
+                st.badge(status, color=color)
+            st.caption(f"{len(rows)} asset{'' if len(rows) == 1 else 's'}")
+        with st.container(horizontal=True, gap="small"):
+            if k == "own":
+                st.button("Edit", key=f"edit_{k}", disabled=True, help="It's open in the editor below")
+            elif st.button("Edit", key=f"edit_{k}", disabled=not own_complete,
+                           help=None if own_complete else
+                           "Finish the pie you're editing (weights at 100%) before switching"):
+                open_compared(int(k))
+                st.rerun()
+            if st.button("Copy", key=f"copy_{k}", disabled=k == "own" and not own_complete,
+                         help="Adds a copy to the comparison, so you can change it and compare the two"):
+                add_to_comparison({"name": f"{plain_name(name)} (copy)",
+                                   "assets": [{"ticker": t, "weight": w, "name": n} for t, n, w in rows]})
+                st.rerun()
+            if st.button("Remove", key=f"remove_{k}"):
+                if k == "own":
+                    close_open_pie()
+                else:
+                    st.session_state.compare.pop(int(k))
+                st.rerun()
+        if rows:
+            st.plotly_chart(donut(rows, readable(pie_colors[name]), 180 if phone else 240), key=f"donut_{k}",
+                            config={"displayModeBar": False})
+        else:
+            st.caption("No assets yet: search for one in the editor below.")
+        if phone:
+            result_card(k)
+
+
+def big(text):
+    st.html(f'<div class="big-number">{html.escape(text)}</div>')
+
+
+def result_row(k, row, label, sub, value, help_text):
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        st.markdown(f"{label}  \n:small[{sub}]", help=help_text, width="stretch")
+        with st.container(key=f"val_{k}_{row}", width="content"):
+            st.markdown(f"**{value}**")
+        if row in marks.get(card_name[k], ()):
+            with st.container(key=f"best_{k}_{row}", width="content"):
+                st.badge("best", color="green")
+
+
+def result_card(k):
+    """A pie's results: value now and the gain on money put in, Return, Per year and Worst fall."""
+    name = card_name[k]
+    with st.container(border=not phone, key=f"result_{k}"):
+        if not phone:
+            card_name_html(k)
+        res = results.get(name)
+        if res is None:
+            if name in no_window:
+                st.caption(md(no_window[name]) + ".")
+            elif k == "own" and not own_ready:
+                st.caption("Results appear once its weights add up to 100% and every ticker is found.")
+            else:
+                st.caption("No results for this pie: see the message above.")
+            return
+        m, ccy = by_pie[name], base_ccy
+        first_day, last_day = res["total"].index[0], res["total"].index[-1]
+        with st.container(key=f"window_{k}"):
+            st.caption(engine.window_label(first_day, last_day))
+        st.caption("Value now", help=f"What the pie is worth on {nice(last_day)}. The gain is the value minus "
+                                     "everything you put in; the percentage is the gain on the money you put in.")
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            with st.container(key=f"val_{k}_value", width="content"):
+                big(money(m["final_value"], ccy, True))
+            if "value" in marks.get(name, ()):
+                with st.container(key=f"best_{k}_value", width="content"):
+                    st.badge("best", color="green")
+        gain = m["profit"]
+        on_put_in = f" ({gain / m['invested'] * 100:+.0f}%)".replace("-", "−") if m["invested"] > 0 else ""
+        deposits = int((res["invested"].diff() > 0).sum())
+        st.caption(md(f"{'−' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}"
+                      f"{on_put_in} on {money(m['invested'], ccy, True)} put in"),
+                   help=f"{money(res['invested'].iloc[0], ccy)} to start and {deposits} monthly deposits.")
+        result_row(k, "return", "Return", "time-weighted", signed_pct(m["twr_total"] * 100),
+                   "How the pie itself grew, as if all the money had been in from the start (time-weighted). "
+                   "It's higher or lower than the gain on money put in because money added later had less time "
+                   "to grow or fall.")
+        short = pd.isna(m["cagr"])
+        result_row(k, "per_year", "Per year", "needs a year of data" if short else "on average",
+                   "n/a" if short else signed_pct(m["cagr"] * 100),
+                   "The steady yearly growth that gives the same Return (compound annual growth rate, CAGR).")
+        dd = res["twr"] / res["twr"].cummax() - 1
+        result_row(k, "worst_fall", "Worst fall", f"lowest on {nice(dd.idxmin())}",
+                   f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"),
+                   f"The largest drop from a previous high. Volatility: {m['volatility'] * 100:.1f}% a year.")
+        # why it starts later than From, and what the shared window cost it
+        if rule != "cash" and first_day > pd.Timestamp(start) + pd.Timedelta(days=7):
+            own_late = late.get(name, {})
+            if own_late and max(own_late.values()) >= first_day.date() - pd.Timedelta(days=7):
+                ticker = max(own_late, key=own_late.get)
+                st.caption(md(f"Starts {nice(first_day)}: {ticker} listed then."))
+            else:
+                st.caption(md(f"Starts {nice(first_day)}, with the other pies."))
+        own_day = first_full.get(name)
+        if rule == "common" and own_day is not None and own_day + pd.Timedelta(days=7) < first_day:
+            alone, _, _ = cached_backtest(assets_of[name], own_day.date(), end, base_ccy, initial, monthly,
+                                          rebalance, "wait")
+            a = engine.metrics(alone)
+            per_year = "" if pd.isna(a["cagr"]) else f", {signed_pct(a['cagr'] * 100)}/yr"
+            st.caption(md(f"On its own, from {nice(alone['total'].index[0])}: "
+                          f"{money(a['final_value'], ccy, True)}{per_year}"))
+            if st.button("Each from its own start", key=f"own_start_{k}", type="tertiary"):
+                st.session_state.start_rule = "own"
+                st.rerun()
+
+
+def card_css():
+    """Each card's colour: a top border and a dot before its name."""
+    rules = "".join(
+        f".st-key-pie_card_{k},.st-key-result_{k}{{border-top:4px solid {pie_colors[card_name[k]]} !important}}"
+        f".st-key-pie_card_{k} .card-name::before,.st-key-result_{k} .card-name::before"
+        f"{{content:'●';content:'●' / '';color:{pie_colors[card_name[k]]};margin-right:6px}}"
+        for k in card_keys)
+    st.html(f"<style>{rules}</style>")
+
+
+with pies_slot:
+    if card_keys:
+        card_css()
+        with st.container(horizontal=True, vertical_alignment="bottom"):
+            st.subheader("Pies", anchor=False, width="content")
+            st.caption(f"{len(card_keys)} of {MAX_COMPARED} · the donuts show target weights", width="stretch")
+            if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
+                st.session_state.compare = []
+                st.rerun()
+        if phone:
+            for k in card_keys:
+                pie_card(k)
+        else:
+            for start_at in range(0, len(card_keys), MAX_COMPARED):
+                row = card_keys[start_at:start_at + MAX_COMPARED]
+                for col, k in zip(st.columns(max(len(row), CARD_COLUMNS)), row):
+                    with col:
+                        pie_card(k)
+
 if results:
     st.divider()
-    # each pie keeps the colour of its chip in every chart and table
+    if not phone:  # on a phone each pie's results are in its card
+        with st.container(key="results"):
+            with st.container(horizontal=True, vertical_alignment="bottom"):
+                st.subheader("Results", anchor=False, width="content")
+                if rule != "own" or not late:
+                    some = next(iter(results.values()))
+                    st.caption(md(f"{engine.window_label(some['total'].index[0], some['total'].index[-1])} · "
+                                  f"{money(by_pie[next(iter(results))]['invested'], base_ccy, True)} put in each"),
+                               width="stretch")
+            for col, k in zip(st.columns(max(len(card_keys), CARD_COLUMNS)), card_keys):
+                with col:
+                    result_card(k)
+    # each pie keeps the colour of its card in every chart
     colors = pie_colors
     if own:
         res, ccy = own, base_ccy
-        m = engine.metrics(res)
-        dd_own = res["twr"] / res["twr"].cummax() - 1
-        deposits = int((res["invested"].diff() > 0).sum())
-        gain = m["profit"]
-        if len(results) > 1:  # with several pies on the charts, say which one the tiles describe
-            st.html(f'<div style="font-weight:600;color:{readable(st.session_state.own_color)}">● '
-                    f'{html.escape(st.session_state.pie_name)} <span style="opacity:.7;font-weight:400">'
-                    f'(the pie you\'re editing)</span></div>')
-        with st.container(horizontal=True):
-            # the gain on money put in is what an account shows; Return (time-weighted) is the pie's own growth
-            on_put_in = f" ({gain / m['invested'] * 100:+.0f}%)" if m["invested"] > 0 else ""
-            st.metric("Value now", money(m["final_value"], ccy, True), border=True, height="stretch",
-                      delta=f"{'-' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}"
-                            + on_put_in,  # "+€6.3k gain (+69%)"; the tooltip says it's on the money put in
-                      chart_data=res["total"].resample("W").last().tolist(), chart_type="area",
-                      help=f"What the pie is worth on {res['total'].index[-1].date()}. The gain is the value minus "
-                           "everything you put in; the percentage is the gain on the money you put in.")
-            st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
-                      delta=f"{money(res['invested'].iloc[0], ccy, True)} + {deposits} deposits",
-                      delta_color="off", delta_arrow="off")
-            st.metric("Return", signed_pct(m['twr_total'] * 100), border=True, height="stretch",
-                      delta="the pie's own growth", delta_color="off", delta_arrow="off",
-                      help="How the pie itself grew, as if all the money had been in from the start (time-weighted). "
-                           "It's higher or lower than the gain on money put in, under Value now, because money "
-                           "added later had less time to grow or fall.")
-            short = pd.isna(m["cagr"])
-            st.metric("Per year", "n/a" if short else signed_pct(m['cagr'] * 100), border=True, height="stretch",
-                      delta="needs a year of data" if short else "on average", delta_color="off", delta_arrow="off",
-                      help="The steady yearly growth that gives the same Return (compound annual growth rate, CAGR).")
-            st.metric("Worst fall", f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"), border=True, height="stretch",
-                      delta=f"lowest on {dd_own.idxmin().date()}", delta_color="off", delta_arrow="off",
-                      help=f"The largest drop from a previous high. Volatility: {m['volatility'] * 100:.1f}% a year.")
-    elif st.session_state.pie:
-        st.caption("Your pie appears here once its weights add up to 100% and its tickers are fixed.")
-
     tab_names = (["Growth", "By asset", "Holdings"] if own else ["Growth"]) + ["How it's calculated"]
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
     with tabs["Growth"]:
@@ -1214,11 +1330,11 @@ if results:
         fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
                                  line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
         for name, r in results.items():
-            fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=html.escape(name), hovertemplate="%{y:,.0f}",
+            fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=html.escape(plain_name(name)), hovertemplate="%{y:,.0f}",
                                      line=dict(color=colors[name], width=2.6 if name == OWN else 1.8)),
                           row=1, col=1)
             dd = (r["twr"] / r["twr"].cummax() - 1) * 100
-            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=html.escape(name), showlegend=False, hovertemplate="%{y:.1f}%",
+            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=html.escape(plain_name(name)), showlegend=False, hovertemplate="%{y:.1f}%",
                                      line=dict(color=colors[name], width=1.2),
                                      fill="tozeroy" if len(results) == 1 else None), row=2, col=1)
 
@@ -1303,47 +1419,3 @@ elif st.session_state.pie and not settings_ok:
     st.info("Fix the period or the plan above to see the backtest.")
 elif st.session_state.pie and not own_ready:
     st.info("The results appear here once the weights add up to 100% and every ticker is found.")
-
-# ---------------- comparison table ----------------
-if st.session_state.compare and len(results) > 1:
-    st.subheader("Compared pies")
-    table = engine.comparison_table(results)
-    # rows in the same order as the chips
-    place = {OWN: st.session_state.own_order} | {e["name"]: e.get("order", 0) for e in st.session_state.compare}
-    table = table.sort_values("Pie", key=lambda col: col.map(place), kind="stable").reset_index(drop=True)
-    same_invested = table["Invested"].round(2).nunique() == 1
-    shown = table[(["Pie", "Final value", "Return %", "CAGR %"] if on_phone() else  # what fits on a phone
-                   ["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"])
-                  + ([] if same_invested else ["Invested"])].copy()
-    best = {"Final value": "max", "Return %": "max", "CAGR %": "max", "Max drawdown %": "max", "Volatility %": "min"}
-    row_colors = [colors.get(n, "#8a8d96") for n in shown["Pie"]]
-
-    def emphasis(df):
-        """Each pie's name in its colour; the best value in each column in bold."""
-        css = pd.DataFrame("", index=df.index, columns=df.columns)
-        for col, how in best.items():
-            if col not in df:  # fewer columns on a phone
-                continue
-            ranked = df[col]
-            if rule != "own" and ranked.notna().sum() > 1:  # pies over different periods aren't ranked  # "best" needs at least two pies to compare
-                css.loc[getattr(ranked, f"idx{how}")(), col] = "font-weight: 700"
-        css["Pie"] = [f"color: {c}; font-weight: 600" for c in row_colors]
-        return css
-
-    pct = lambda v: "—" if pd.isna(v) else signed_pct(v)  # noqa: E731
-    st.dataframe(
-        shown.style.apply(emphasis, axis=None).format({k: f for k, f in {
-            "Final value": lambda v: money(v, base_ccy), "Invested": lambda v: money(v, base_ccy),
-            "Return %": pct, "CAGR %": pct,
-            "Max drawdown %": lambda v: f"{v:.1f}%".replace("-", "−"), "Volatility %": "{:.1f}%"}.items() if k in shown}),
-        hide_index=True, width="stretch", column_config={
-            "Pie": st.column_config.TextColumn(width="small" if on_phone() else None),  # so Per year fits
-            "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
-            "Final value": "Value", "Return %": st.column_config.Column("Return", help="Time-weighted"),
-            "CAGR %": st.column_config.Column("Per year", help="CAGR"),
-            "Max drawdown %": st.column_config.Column("Worst fall", help="Largest drop from a previous high"),
-            "Volatility %": st.column_config.Column("Volatility", help="How much it swings, per year"),
-        })
-    st.caption(md(("" if rule == "own" else "Bold: best in the column.")
-                  + (f" Every pie had {money(table['Invested'].iloc[0], base_ccy)} put in." if same_invested else "")
-                  + " All pies use the same settings and the period above."))
