@@ -262,11 +262,3 @@ def test_window_label_under_a_month():
         "1 Oct 2026 – 11 Oct 2026 · under a month"  # was "0 months"
     assert engine.window_label(pd.Timestamp("2026-09-01"), pd.Timestamp("2026-10-11")) == \
         "1 Sep 2026 – 11 Oct 2026 · 1 month"
-
-
-def test_max_start_is_as_far_back_as_the_results_go():
-    days = [pd.Timestamp("2015-12-03"), pd.Timestamp("2019-07-29")]
-    assert engine.max_start(days, "common") == date(2019, 7, 29)  # every pie starts together
-    assert engine.max_start(days, "own") == date(2015, 12, 3)  # the earliest pie
-    assert engine.max_start(days, "cash") == date(2015, 12, 3)
-    assert engine.max_start([], "common") is None  # no pie: From stays

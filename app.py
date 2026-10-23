@@ -525,22 +525,21 @@ def pie_payload(name=None):
     }
 
 
-def max_period_start():
-    """The From date of the Max period (engine.max_start), from each loaded pie's first full-price day; None
-    with no pie."""
-    pies = [[a["Ticker"] for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]]
-    pies += [list(e["weights"]) for e in st.session_state.compare]
-    days = []
-    for tickers in pies:
-        tickers = [t for t in tickers if not is_bare(t)]
-        try:
-            prices, _ = prices_for(tickers, EARLIEST, date.today(), st.session_state.base_ccy) if tickers else (None, None)
-        except Exception:  # a ticker without prices: the results say so
-            continue
-        day = engine.first_full_day(prices[tickers], EARLIEST) if prices is not None else None
-        if day is not None:
-            days.append(day)
-    return engine.max_start(days, st.session_state.start_rule)
+def loaded_tickers():
+    """Every ticker of every loaded pie: the open one and the compared ones."""
+    own = [a["Ticker"] for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]
+    return list(dict.fromkeys(own + [t for e in st.session_state.compare for t in e["weights"]]))
+
+
+def earliest_price():
+    """The first day any loaded asset has a price (the Max period), or None with no pie."""
+    tickers = [t for t in loaded_tickers() if not is_bare(t)]
+    try:
+        prices, _ = prices_for(tickers, EARLIEST, date.today(), st.session_state.base_ccy) if tickers else (None, None)
+    except Exception:  # a ticker without prices: the results say so
+        return None
+    firsts = prices.apply(lambda col: col.first_valid_index()).dropna() if prices is not None else []
+    return min(firsts).date() if len(firsts) else None
 
 
 def pick_period():
@@ -558,7 +557,7 @@ def custom_period():
 # date fields are drawn
 if st.session_state.period != "Custom":
     _from = engine.period_start(st.session_state.period, date.today(),
-                                max_period_start() if st.session_state.period == "Max" else None)
+                                earliest_price() if st.session_state.period == "Max" else None)
     if _from:
         st.session_state.start = _from
     st.session_state.end = date.today()

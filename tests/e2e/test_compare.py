@@ -343,13 +343,3 @@ def test_the_coverage_strip_is_always_there(app):
         app.wait()
         expect(strip).to_have_count(1)
         expect(app.page.get_by_text("Every number and chart below covers")).to_be_visible()
-
-
-def test_max_goes_back_as_far_as_the_results(app):
-    app.load_example("All-World ETF")
-    app.load_example("Tech Leaders")  # AAPL has prices from 1980, but QDVE.DE from 2015 and VWCE.DE from 2019
-    app.page.locator(".st-key-period_pick").get_by_role("radio", name="Max", exact=True).click()
-    app.wait()
-    assert app.page.get_by_role("spinbutton", name="year, From").get_attribute("aria-valuenow") == "2019"
-    start_choice_radio = app.page.get_by_role("radiogroup", name="When the pies start")
-    expect(start_choice_radio).to_have_count(0)  # nothing lists late any more: From is the shared start
