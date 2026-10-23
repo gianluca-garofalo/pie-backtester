@@ -273,20 +273,32 @@ def fix_tickers(ccy):
     pie_changed()
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def cached_ticker_prices(ticker, start, end, base):
-    return engine.load_prices([ticker], start, end, base)
+EARLIEST = date(1970, 1, 1)  # the earliest start the sidebar allows
+
+
+@st.cache_resource(show_spinner=False)
+def price_store():
+    """Each ticker's full price history in one base currency, downloaded once a day and shared by all
+    visitors: {(ticker, base, day): (prices, currency)}. Date changes then need no download at all."""
+    return {}
 
 
 def prices_for(tickers, start, end, base):
-    """Prices in the base currency, cached per ticker so adding a pie only downloads its new tickers."""
-    frames, currencies = [], {}
-    for t in dict.fromkeys(tickers):
-        prices, info = cached_ticker_prices(t, start, end, base)
-        frames.append(prices)
-        currencies.update(info["currencies"])
+    """Prices in the base currency up to `end`, from the store; missing tickers come in one download."""
+    store, today = price_store(), date.today()
+    tickers = list(dict.fromkeys(tickers))
+    missing = [t for t in tickers if (t, base, today) not in store]
+    if missing:
+        prices, info = engine.load_prices(missing, EARLIEST, today, base)
+        for key in [k for k in store if k[2] != today]:
+            store.pop(key, None)  # yesterday's prices are out of date
+        for t in missing:
+            store[(t, base, today)] = (prices[[t]].dropna(), info["currencies"][t])
+    frames = [store[(t, base, today)][0] for t in tickers]
+    currencies = {t: store[(t, base, today)][1] for t in tickers}
     # exchanges trade on different days; carry each price forward like a single download would
-    return pd.concat(frames, axis=1).sort_index().ffill(), {"currencies": currencies}
+    prices = pd.concat(frames, axis=1).sort_index().ffill()
+    return prices.loc[:pd.Timestamp(end)], {"currencies": currencies}
 
 
 def add_to_comparison(cfg, color=None):

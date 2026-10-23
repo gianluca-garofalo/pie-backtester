@@ -123,13 +123,16 @@ def load_prices(tickers: list[str], start, end, base_ccy: str = "EUR") -> tuple[
 
     currencies = {t: get_currency(t) for t in tickers}
     prices = pd.DataFrame(index=raw.index)
+    fx_rates = {}  # one download per currency, however many tickers use it
     for t in tickers:
         s = raw[t].astype(float)
         cur = currencies[t]
         if cur in ("GBp", "GBX"):  # London quotes in pence
             s, cur = s / 100.0, "GBP"
         if cur.upper() != base_ccy.upper():
-            fx = _close_frame([f"{cur.upper()}{base_ccy.upper()}=X"], fetch_start, end_excl)
+            if cur.upper() not in fx_rates:
+                fx_rates[cur.upper()] = _close_frame([f"{cur.upper()}{base_ccy.upper()}=X"], fetch_start, end_excl)
+            fx = fx_rates[cur.upper()]
             if fx.empty:
                 raise ValueError(f"Could not load FX rate {cur}->{base_ccy}.")
             fx = fx.iloc[:, 0].reindex(s.index).ffill().bfill()
