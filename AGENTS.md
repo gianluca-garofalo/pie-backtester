@@ -48,4 +48,5 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Yahoo sometimes drops a ticker from a batch download. `load_prices` retries the missing ones once, so don't treat one failed run as a bad ticker.
 - Yahoo tickers: European ETFs need an exchange suffix (`VWCE.DE`). US stocks don't (`AAPL`). `resolve_ticker` must rank the exact bare listing above foreign ones such as `AAPL.TO`, which is a Canadian depositary receipt.
 - `st.date_input` defaults to a lower bound 10 years back, so always pass `min_value`.
+- Sign-in needs `streamlit[auth]` in `requirements.txt`. With `authlib` alone, `httpx` is missing and `st.login` fails with a 500 at `/auth/login`. The secrets aren't the cause.
 - Streamlit 1.66 DOM, for E2E tests: selects are react-aria comboboxes (`get_by_role("combobox", name=label)`). The pie table is a canvas grid, so read it through its hidden `table` and edit by clicking coordinates, then Enter, then typing. Dates commit on blur, not on Tab. Wait for reruns with `stApp[data-test-script-state=notRunning]`.
