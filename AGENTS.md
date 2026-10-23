@@ -37,7 +37,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Load prices with `prices_for()`, which caches each ticker separately, so the single backtest and the comparison reuse downloads. Every pie, yours and the compared ones, is simulated by `cached_backtest`, cached per pie, so unrelated reruns don't re-simulate. Each pie starts on its first day with prices within the sidebar dates.
 - Sign-in and storage: `st.login` (Google) identifies users as `google:<sub>`. Supabase is a database used only from the server with the service key, so `SupabaseStorageBackend` must filter every query by `owner_id`; RLS is not the safety net. Never offer the guest account when storage is shared.
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
-- Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md`. Update the ledger before pausing.
+- Claude state stays in this repo. Memory goes in `.claude/memory/` (set by `autoMemoryDirectory` in the gitignored `.claude/settings.local.json`; Claude Code ignores that key in the committed settings), plans in `.claude/plans/`, and progress in `.claude/LEDGER.md` (gitignored, local only). Update the ledger before pausing.
 
 ## Skills in this repo
 
