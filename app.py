@@ -540,7 +540,7 @@ def max_period_start():
         day = engine.first_full_day(prices[tickers], EARLIEST) if prices is not None else None
         if day is not None:
             days.append(day)
-    return engine.max_start(days, st.session_state.start_rule)
+    return engine.max_start(days)
 
 
 def pick_period():
@@ -1123,6 +1123,7 @@ entries = ([(OWN, tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if o
     [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
 
 results, late, currencies, first_full, no_window = {}, {}, {}, {}, {}
+history = {}  # each pie's own history, for the strip: (first day with every price, its latest-listing asset)
 rule = st.session_state.start_rule
 if settings_ok and entries:
     with st.spinner("Loading prices and simulating…"):
@@ -1139,6 +1140,8 @@ if settings_ok and entries:
             currencies.update(info["currencies"])
             firsts = prices.apply(lambda col: col.first_valid_index())
             late[name] = {t: d.date() for t, d in firsts.items() if d.date() > start + pd.Timedelta(days=7)}
+            history[name] = (engine.first_full_day(prices.loc[:pd.Timestamp(end)], EARLIEST),
+                             max(firsts.items(), key=lambda x: x[1]))
             day = engine.first_full_day(prices.loc[:pd.Timestamp(end)], start)
             if day is not None:
                 first_full[name] = day
@@ -1179,30 +1182,53 @@ def months(a, b):
     return round((pd.Timestamp(b) - pd.Timestamp(a)).days / 30.44)
 
 
+def faded(color, alpha=.35):
+    """A pie colour, see-through: days the pie has prices for that the results don't use."""
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def coverage_figure(names):
-    """One bar per pie: the period asked for (light), where an asset has no prices yet (dotted) and the days
-    the results use (in the pie's colour)."""
+    """One bar per pie over its own history, not only the period: dotted grey before every asset has prices,
+    faded colour where it has them but the results don't use the days (before From, or waiting to start with
+    the others), solid colour for the days the results use. The axis starts at the earliest pie's first full
+    day when that's before From, which is marked. Returns (figure, key sentence for the styles shown)."""
     fig = go.Figure()
-    t0, t1 = pd.Timestamp(start), pd.Timestamp(end)
-    labels = []
+    t_from, t1 = pd.Timestamp(start), pd.Timestamp(end)
+    t0 = min([t_from] + [history[n][0] for n in names if n in history and history[n][0] is not None])
+    labels, shown = [], set()
     for row, n in enumerate(names):  # one numbered row per pie: two cut names can be the same
         name = plain_name(n)
         labels.append(html.escape(name if len(name) <= 24 else name[:23] + "…"))  # a long name squeezed the bars
-        fig.add_trace(go.Scatter(x=[t0, t1], y=[row] * 2, mode="lines",
+        fig.add_trace(go.Scatter(x=[t_from, t1], y=[row] * 2, mode="lines", name="period",
                                  line=dict(color="rgba(138,141,150,.25)", width=10)))
-        if n in late:
-            ticker, listed = max(late[n].items(), key=lambda x: x[1])
-            listed = pd.Timestamp(min(listed, end))
-            fig.add_trace(go.Scatter(x=[t0, listed], y=[row] * 2, mode="lines",
+        full, (ticker, listed) = history.get(n, (None, (None, None)))
+        no_prices_until = min(full if full is not None else t1, t1)
+        if ticker and no_prices_until > t0 + pd.Timedelta(days=3):
+            fig.add_trace(go.Scatter(x=[t0, no_prices_until], y=[row] * 2, mode="lines", name="no prices yet",
                                      line=dict(color="#8a8d96", width=2, dash="dot")))
-            fig.add_annotation(x=t0 + (listed - t0) / 2, y=row, yshift=11, showarrow=False,
+            fig.add_annotation(x=t0 + (no_prices_until - t0) / 2, y=row, yshift=11, showarrow=False,
                                text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
+            shown.add("dotted")
         if n in results:
-            fig.add_trace(go.Scatter(x=[results[n]["total"].index[0], t1], y=[row] * 2, mode="lines",
+            used = results[n]["total"].index[0]
+            if full is not None and full + pd.Timedelta(days=3) < used:
+                fig.add_trace(go.Scatter(x=[full, used], y=[row] * 2, mode="lines", name="has prices, not used",
+                                         line=dict(color=faded(pie_colors[n]), width=10)))
+                shown.add("faded")
+            fig.add_trace(go.Scatter(x=[used, t1], y=[row] * 2, mode="lines", name="used",
                                      line=dict(color=pie_colors[n], width=10)))
+    if t0 < t_from:  # the period starts later than the strip
+        fig.add_vline(x=t_from, line=dict(color="#8a8d96", width=1, dash="dot"))
+        fig.add_annotation(x=t_from, y=-0.6, showarrow=False, text="From", font=dict(size=10, color="#5f636e"))
     fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
-                      yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels), xaxis=dict(range=[t0, t1]))
-    return fig
+                      yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels),
+                      xaxis=dict(range=[t0, t1]))
+    key = " ".join(text for part, text in (
+        ("solid", "Solid: the days the results use."),
+        ("faded", "Faded: the pie has prices, but the results don't use these days."),
+        ("dotted", "Dotted: an asset has no prices yet.")) if part == "solid" or part in shown) if shown else ""
+    return fig, key
 
 
 def pick_start_rule():
@@ -1215,7 +1241,10 @@ with period_detail:
     if shown_pies:  # always: it shows the days the results use, also when every asset has prices from From
         screen_reader_text("Which days each pie has prices for: " + "; ".join(
             f"{plain_name(n)} from {nice(results[n]['total'].index[0])}" for n in shown_pies if n in results) + ".")
-        st.plotly_chart(coverage_figure(shown_pies), config={"staticPlot": True})
+        strip, key = coverage_figure(shown_pies)
+        st.plotly_chart(strip, config={"staticPlot": True})
+        if key:
+            st.caption(key)
     if results:
         last_day = max(r["total"].index[-1] for r in results.values())
         first_day = min(r["total"].index[0] for r in results.values())
@@ -1264,7 +1293,6 @@ own_complete = bool(st.session_state.pie) and storage.adds_up(total_w)
 card_keys = [k for _, k in sorted(([(st.session_state.own_order, "own")] if st.session_state.pie else [])
                                   + [(e.get("order", 0), str(i)) for i, e in enumerate(st.session_state.compare)])]
 card_name = {k: OWN if k == "own" else st.session_state.compare[int(k)]["name"] for k in card_keys}
-assets_of = dict(entries)
 by_pie = {n: engine.metrics(r) for n, r in results.items()}
 BEST_ROW = {"final_value": "value", "twr_total": "return", "cagr": "per_year", "max_drawdown": "worst_fall"}
 # the rows each pie is best at; pies over different periods aren't ranked
@@ -1422,25 +1450,6 @@ def result_card(k):
         result_row(k, "worst_fall", "Worst fall", f"lowest on {nice(dd.idxmin())}",
                    f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"),
                    f"The largest drop from a previous high. Volatility: {m['volatility'] * 100:.1f}% a year.")
-        # why it starts later than From, and what the shared window cost it
-        if rule != "cash" and first_day > pd.Timestamp(start) + pd.Timedelta(days=7):
-            own_late = late.get(name, {})
-            if own_late and max(own_late.values()) >= first_day.date() - pd.Timedelta(days=7):
-                ticker = max(own_late, key=own_late.get)
-                st.caption(md(f"Starts {nice(first_day)}: {ticker} listed then."))
-            else:
-                st.caption(md(f"Starts {nice(first_day)}, with the other pies."))
-        own_day = first_full.get(name)
-        if rule == "common" and own_day is not None and own_day + pd.Timedelta(days=7) < first_day:
-            alone, _, _ = cached_backtest(assets_of[name], own_day.date(), end, base_ccy, initial, monthly,
-                                          rebalance, "wait")
-            a = engine.metrics(alone)
-            per_year = "" if pd.isna(a["cagr"]) else f", {signed_pct(a['cagr'] * 100)}/yr"
-            st.caption(md(f"On its own, from {nice(alone['total'].index[0])}: "
-                          f"{money(a['final_value'], ccy, True)}{per_year}"))
-            if st.button("Each from its own start", key=f"own_start_{k}", type="tertiary"):
-                st.session_state.start_rule = "own"
-                st.rerun()
 
 
 def card_css():

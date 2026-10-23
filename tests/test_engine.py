@@ -264,9 +264,9 @@ def test_window_label_under_a_month():
         "1 Sep 2026 – 11 Oct 2026 · 1 month"
 
 
-def test_max_start_is_as_far_back_as_the_results_go():
+def test_max_start_is_the_earliest_pie_start():
     days = [pd.Timestamp("2015-12-03"), pd.Timestamp("2019-07-29")]
-    assert engine.max_start(days, "common") == date(2019, 7, 29)  # every pie starts together
-    assert engine.max_start(days, "own") == date(2015, 12, 3)  # the earliest pie
-    assert engine.max_start(days, "cash") == date(2015, 12, 3)
-    assert engine.max_start([], "common") is None  # no pie: From stays
+    # the earliest day a pie has every price, whatever the start rule: Max that depended on the rule
+    # started the pies together and hid the choice of rule
+    assert engine.max_start(days) == date(2015, 12, 3)
+    assert engine.max_start([]) is None  # no pie: From stays

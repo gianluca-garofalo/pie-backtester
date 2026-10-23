@@ -207,13 +207,11 @@ def period_start(preset: str, today, earliest):
     return (pd.Timestamp(today) - pd.DateOffset(years=int(preset[:-1]))).date()
 
 
-def max_start(first_days, rule: str):
-    """The From date of the Max period: as far back as the results go. Pies starting together (the common
-    rule) start on the latest of their first full-price days; otherwise the earliest pie's day. None without
-    pies. (The earliest price of any asset, e.g. a stock from 1980, only added years no pie used.)"""
-    if not first_days:
-        return None
-    return (max(first_days) if rule == "common" else min(first_days)).date()
+def max_start(first_days):
+    """The From date of the Max period: the earliest day a pie has prices for all its assets (the earliest
+    price of any one asset gave 1980 for Apple, a date no pie can start on). Not tied to the start rule: a
+    Max that was the shared start of all pies hid the choice of rule. None without pies."""
+    return min(first_days).date() if first_days else None
 
 
 def first_full_day(prices: pd.DataFrame, start):

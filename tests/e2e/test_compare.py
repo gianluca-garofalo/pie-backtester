@@ -81,17 +81,18 @@ def test_results_cards_mark_the_best(app):
     expect(app.page.locator("[class*='st-key-best_']")).to_have_count(4)  # one per row
 
 
-def test_on_its_own_line(app):
+def test_cards_dont_repeat_the_start_choice(app):
     for name in ("All-World ETF", "Tech Leaders"):
         app.load_example(name)
     app.set_date("From", "2018-01-01")
     card = app.page.locator(".st-key-result_own")
-    expect(card).to_contain_text("On its own, from 2 Jan 2018:")  # the days the shared window cut off
-    card.get_by_role("button", name="Each from its own start").click()
+    # the period sentence and the start choice above say it already
+    expect(card).not_to_contain_text("with the other pies")
+    expect(card).not_to_contain_text("On its own")
+    start_choice(app).get_by_text("Each pie from its own first price").click()  # still switches the rule
     app.wait()
     assert app.window("Tech Leaders").startswith("2 Jan 2018 – ")
     expect(app.page.locator("[class*='st-key-best_']")).to_have_count(0)  # different periods aren't ranked
-
 
 def start_choice(app):
     return app.page.get_by_role("radiogroup", name="When the pies start")
@@ -345,11 +346,22 @@ def test_the_coverage_strip_is_always_there(app):
         expect(app.page.get_by_text("Every number and chart below covers")).to_be_visible()
 
 
-def test_max_goes_back_as_far_as_the_results(app):
+def test_max_goes_back_to_the_earliest_pie_and_keeps_the_choice(app):
     app.load_example("All-World ETF")
     app.load_example("Tech Leaders")  # AAPL has prices from 1980, but QDVE.DE from 2015 and VWCE.DE from 2019
     app.page.locator(".st-key-period_pick").get_by_role("radio", name="Max", exact=True).click()
     app.wait()
-    assert app.page.get_by_role("spinbutton", name="year, From").get_attribute("aria-valuenow") == "2019"
-    start_choice_radio = app.page.get_by_role("radiogroup", name="When the pies start")
-    expect(start_choice_radio).to_have_count(0)  # nothing lists late any more: From is the shared start
+    assert app.page.get_by_role("spinbutton", name="year, From").get_attribute("aria-valuenow") == "2015"
+    # VWCE.DE lists after that, so the start choice is there, as with 10Y
+    expect(app.page.get_by_role("radiogroup", name="When the pies start")).to_be_visible()
+
+
+def test_the_strip_shows_each_pies_own_history(app):
+    app.load_example("All-World ETF")
+    app.load_example("Tech Leaders")
+    app.page.locator(".st-key-period_pick").get_by_role("radio", name="Max", exact=True).click()
+    app.wait()  # the pies start together on 29 Jul 2019; Tech Leaders has every price from Dec 2015
+    traces = app.page.locator(".st-key-period .js-plotly-plot").evaluate(
+        "e => e.data.map(t => [t.name, String(t.x[0]).slice(0, 10)])")
+    assert ["has prices, not used", "2015-12-03"] in traces, traces  # the bars showed only the shared days
+    expect(app.page.get_by_text("Faded: the pie has prices, but the results don't use these days.")).to_be_visible()
