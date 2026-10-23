@@ -524,6 +524,7 @@ def add_to_comparison(cfg, color=None, order=None, saved_ref=None, source=None, 
         name = f"{base[:-1]} {n})" if base.endswith(" (copy)") else f"{base} ({n})"
         n += 1
     color = color or free_color({e.get("color") for e in others} | {st.session_state.own_color})
+    st.session_state.pop("undo", None)  # Undo puts back all the pies: it would drop this one
     others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color,
                    "order": new_order() if order is None else order, "saved_ref": saved_ref})
 
@@ -646,6 +647,7 @@ def save_open_pie(name, is_public=None):
         saved = active_storage.save_pie(payload, user_id=user_id)
     st.session_state.pie_name = saved["name"]
     st.session_state.saved_ref = saved_ref_of(saved)
+    st.session_state.pop("undo", None)  # Undo would put back the unsaved state
     return saved, bool(same)
 
 
@@ -698,8 +700,11 @@ def delete_saved(pie):
     was_open = (st.session_state.saved_ref or {}).get("id") == pie["id"]
     if was_open:
         st.session_state.saved_ref = None  # still open, but no longer saved
+    compared = [e for e in st.session_state.compare if (e.get("saved_ref") or {}).get("id") == pie["id"]]
+    for e in compared:  # a compared card said "Saved" for a pie no longer stored
+        e["saved_ref"] = None
     st.session_state.undo = {"label": f"Deleted '{pie['name']}'.", "kind": "delete",
-                             "data": {"pie": pie, "was_open": was_open}}
+                             "data": {"pie": pie, "was_open": was_open, "compared": [e["name"] for e in compared]}}
 
 
 def undo_last():
@@ -714,6 +719,9 @@ def undo_last():
         saved = active_storage.save_pie(u["data"]["pie"], user_id=user_id)
         if u["data"]["was_open"]:
             st.session_state.saved_ref = saved_ref_of(saved)
+        for e in st.session_state.compare:
+            if e["name"] in u["data"].get("compared", []):
+                e["saved_ref"] = saved_ref_of(saved)
     except Exception as e:
         flash("error", f"Could not bring back '{md(u['data']['pie']['name'])}': {e}")
 
@@ -817,7 +825,7 @@ with my_pies:
         except Exception as e:
             is_valid, err = False, f"it isn't valid JSON ({e})"
         if not is_valid:
-            st.error(f"Could not load this file: {err}")
+            st.error(f"Could not load this file: {md(err)}")
         elif st.session_state.get("loaded_file_id") != uploaded.file_id:
             st.session_state.loaded_file_id = uploaded.file_id
             load_pie(storage.normalize_pie(raw_content, whole=False))
@@ -1158,7 +1166,7 @@ if settings_ok and entries:
                 prices, info = prices_for([t for t, _ in assets], start, date.today(), base_ccy)
             except Exception as e:
                 if name == OWN:
-                    st.error(f"Backtest failed: {e}")
+                    st.error(f"Backtest failed: {md(e)}")
                 else:
                     st.warning(f"'{md(name)}' is left out: {md(e)}")
                 continue
@@ -1166,13 +1174,16 @@ if settings_ok and entries:
             firsts = prices.apply(lambda col: col.first_valid_index())
             late[name] = {t: d.date() for t, d in firsts.items() if d.date() > start + pd.Timedelta(days=7)}
             day = engine.first_full_day(prices.loc[:pd.Timestamp(end)], start)
-            if day is None and rule != "cash":
+            if day is not None:
+                first_full[name] = day
+            # with cash a pie runs while any of its assets has a price in the period; otherwise all of them must
+            priced = not prices.loc[pd.Timestamp(start):pd.Timestamp(end)].dropna(how="all").empty
+            if (day is None and rule != "cash") or not priced:
                 ticker, listed = max(firsts.items(), key=lambda x: x[1])
                 no_window[name] = f"No prices in this period: {ticker} starts {listed.day} {listed:%b %Y}"
-            else:
-                first_full[name] = day
-        days = (dict.fromkeys(first_full, pd.Timestamp(start)) if rule == "cash"
+        days = (dict.fromkeys(late, pd.Timestamp(start)) if rule == "cash"  # every pie whose prices loaded
                 else engine.start_days(first_full, "common" if rule == "common" and len(first_full) > 1 else "own"))
+        days = {n: d for n, d in days.items() if n not in no_window}
         for name, assets in entries:
             if name not in days:
                 continue
@@ -1181,7 +1192,7 @@ if settings_ok and entries:
                                                       rebalance, "cash" if rule == "cash" else "wait")
             except Exception as e:
                 if name == OWN:
-                    st.error(f"Backtest failed: {e}")
+                    st.error(f"Backtest failed: {md(e)}")
                 else:
                     st.warning(f"'{md(name)}' is left out: {md(e)}")
 
@@ -1357,7 +1368,7 @@ def pie_card(k):
         with st.container(horizontal=True, gap="small"):
             if st.button("Edit", key=f"edit_{k}", disabled=k != "own" and not own_complete,
                          help=None if k == "own" or own_complete else
-                         f"Finish '{plain_name(OWN)}' first (weights at 100%), then edit this one"):
+                         f"Finish '{md(plain_name(OWN))}' first (weights at 100%), then edit this one"):
                 if k != "own":
                     open_compared(int(k))
                 start_editing()
@@ -1665,7 +1676,7 @@ if results:
                              "History": st.column_config.AreaChartColumn("Value over time"),
                          })
             st.caption("Currencies of the listings: " +
-                       ", ".join(f"{t} {currencies.get(t, '?')}" for t in weights) +
+                       md(", ".join(f"{t} {currencies.get(t, '?')}" for t in weights)) +
                        f". All values are converted to {ccy} with daily FX rates.")
             csv = pd.concat([res["values"], res["total"].rename("Total"),
                              res["invested"].rename("Invested")], axis=1).to_csv()
