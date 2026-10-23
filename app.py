@@ -674,6 +674,9 @@ def undo_last():
     if u["kind"] == "remove":
         restore(u["data"])
         return
+    if again := my_saved_pie(u["data"]["pie"]["name"]):  # saved anew since: two pies would share the name
+        flash("info", f"'{md(again['name'])}' is saved again already, so the deleted version wasn't brought back.")
+        return
     try:
         saved = active_storage.save_pie(u["data"]["pie"], user_id=user_id)
         if u["data"]["was_open"]:
@@ -1259,9 +1262,11 @@ def status_of(k):
     ref = st.session_state.saved_ref if k == "own" else st.session_state.compare[int(k)].get("saved_ref")
     if not ref:
         return "Not saved yet", "orange"
-    if k != "own":
-        return "Saved", "green"
-    same = pie_key(st.session_state.pie_name, [(a["Ticker"], a["Weight %"] or 0) for a in st.session_state.pie])
+    if k != "own":  # a pie that changed before it moved aside isn't its saved version any more
+        e = st.session_state.compare[int(k)]
+        same = pie_key(e["name"], e["weights"].items())
+    else:
+        same = pie_key(st.session_state.pie_name, [(a["Ticker"], a["Weight %"] or 0) for a in st.session_state.pie])
     return ("Saved", "green") if same == ref["key"] else ("Unsaved changes", "orange")
 
 

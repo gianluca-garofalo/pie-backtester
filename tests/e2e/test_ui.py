@@ -564,3 +564,24 @@ def test_the_editor_says_before_replacing_another_saved_pie(app):
     expect(editor.get_by_role("button", name="Replace in My pies")).to_be_visible()  # not a silent overwrite
     app.close_editor()
     app.delete_saved("E2E taken")
+
+
+def test_a_compared_pie_with_changes_isnt_shown_as_saved(app):
+    app.load_example("60/40 Stocks & Bonds")
+    app.save_pie("E2E stale")
+    app.edit_weight(0, 50, apply=False)
+    app.edit_weight(1, 50)  # changed and applied, not saved
+    app.open_saved("E2E stale")  # the saved version opens; the changed one moves to the comparison
+    statuses = app.page.locator("[class*='st-key-status_']").all_inner_texts()  # two cards with one name
+    assert sorted(statuses) == ["Saved", "Unsaved changes"], statuses
+    app.delete_saved("E2E stale")
+
+
+def test_undo_doesnt_bring_back_a_duplicate_name(app):
+    app.load_example("All-World ETF")
+    app.save_pie("E2E again")
+    app.delete_saved("E2E again")
+    app.save_pie("E2E again")  # saved once more, as a new pie
+    app.click("Undo")
+    expect(app.saved_row("E2E again")).to_have_count(1)
+    app.delete_saved("E2E again")
