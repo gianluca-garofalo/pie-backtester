@@ -252,9 +252,12 @@ def test_period_presets_set_the_dates(app):
 
 def test_growth_chart_controls(app):
     app.load_example("All-World ETF")
-    for option in ("Log", "1Y"):  # segmented controls are radio buttons
-        app.page.get_by_test_id("stTabs").get_by_role("radio", name=option, exact=True).click()
-        app.wait()
+    tabs = app.page.get_by_test_id("stTabs")
+    expect(tabs.get_by_role("radio", name="1Y", exact=True)).to_have_count(0)  # time is set only by the Period
+    tabs.get_by_role("radio", name="Log", exact=True).click()  # segmented controls are radio buttons
+    app.wait()
+    expect(tabs.get_by_text("Zooming changes no numbers: they follow the Period above.")).to_be_visible()
+    app.click("Reset zoom")
     assert app.metrics()
     expect(app.page.get_by_test_id("stPlotlyChart").first).to_be_visible()
 

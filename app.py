@@ -1177,22 +1177,20 @@ if results:
     tabs = dict(zip(tab_names, st.tabs(tab_names)))
     with tabs["Growth"]:
         years = max((r["total"].index[-1] - r["total"].index[0]).days for r in results.values()) / 365.25
-        with st.container(horizontal=True, horizontal_alignment="right"):
+        with st.container(horizontal=True, vertical_alignment="center"):
             # log by default for long horizons: equal % moves then look equal
             scale = st.segmented_control("Scale", ["Linear", "Log"], default="Log" if years > 10 else "Linear",
                                          required=True, label_visibility="collapsed")
-            span = st.segmented_control("Period", ["1Y", "5Y", "Max"], default="Max", required=True,
-                                        label_visibility="collapsed")
-        last_day = max(r["total"].index[-1] for r in results.values())
-        since = last_day - pd.DateOffset(years=int(span[:-1])) if span != "Max" else pd.Timestamp.min
-
-        def window(series):
-            return series[series.index >= since]
+            # time is set only by the Period at the top; zooming is for looking closer
+            st.caption("Drag across the chart to look closer. Zooming changes no numbers: they follow the "
+                       "Period above.", width="stretch")
+            if st.button("Reset zoom"):
+                st.session_state.zoom_round = st.session_state.get("zoom_round", 0) + 1  # a fresh chart
 
         # every pie has the same amount put in (later ones join with it), so the earliest one draws it
         first = min(results.values(), key=lambda r: r["total"].index[0])
-        lines = {name: window(r["total"]) for name, r in results.items()}
-        invested = window(first["invested"])
+        lines = {name: r["total"] for name, r in results.items()}
+        invested = first["invested"]
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26], vertical_spacing=0.05)
         fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
                                  line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
@@ -1200,7 +1198,7 @@ if results:
             fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=html.escape(name), hovertemplate="%{y:,.0f}",
                                      line=dict(color=colors[name], width=2.6 if name == OWN else 1.8)),
                           row=1, col=1)
-            dd = window((r["twr"] / r["twr"].cummax() - 1) * 100)
+            dd = (r["twr"] / r["twr"].cummax() - 1) * 100
             fig.add_trace(go.Scatter(x=dd.index, y=dd, name=html.escape(name), showlegend=False, hovertemplate="%{y:.1f}%",
                                      line=dict(color=colors[name], width=1.2),
                                      fill="tozeroy" if len(results) == 1 else None), row=2, col=1)
@@ -1229,7 +1227,8 @@ if results:
         screen_reader_text("Growth chart: " + "; ".join(
             f"{n.removesuffix(' (editing)')} ends at {money(v, base_ccy, True)}" for n, v, _ in ends
             if n != "You put in") + f"; you put in {money(invested.iloc[-1], base_ccy, True)}.")
-        st.plotly_chart(fig)
+        st.plotly_chart(fig, key=f"growth_{st.session_state.get('zoom_round', 0)}",
+                        config={"displayModeBar": False} if phone else {})
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
                    "predict future returns.")
