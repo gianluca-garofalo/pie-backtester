@@ -417,3 +417,11 @@ def test_a_downloaded_unfinished_pie_opens_again(app, tmp_path):
     app.wait()
     assert [float(r[1]) for r in app.rows()] == [30, 40]  # used to say the weights must sum to 100%
     expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
+
+
+def test_a_very_long_name_keeps_the_chip_on_one_line(app):
+    app.open("?p=" + "L" * 300 + "~USD~2020-01-01~~1000~0~N~w~AAPL:50,MSFT:50")
+    name = app.page.locator(".st-key-chip_name_own").bounding_box()
+    close = app.page.locator("[class*='st-key-chip_x_'] button").filter(visible=True).first.bounding_box()
+    assert abs(name["y"] - close["y"]) < 20  # the ✕ used to wrap onto a second line
+    assert app.page.locator(".st-key-chip_own").bounding_box()["width"] < 700  # not stretched across the page

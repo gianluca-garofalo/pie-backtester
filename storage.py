@@ -19,9 +19,13 @@ BEFORE_LISTING_OPTIONS = ("wait", "cash")
 MAX_AMOUNT = 1e12  # far above any real portfolio; stops absurd values from files and links
 
 
+MAX_NAME_LENGTH = 60  # longer names from files and links are shortened; they stretched the pie chips
+
+
 def clean_name(name: Any) -> str:
-    """A pie name with its spacing tidied: "  My   pie " -> "My pie"."""
-    return " ".join(str(name).split())
+    """A pie name with its spacing tidied, "  My   pie " -> "My pie", and at most MAX_NAME_LENGTH long."""
+    name = " ".join(str(name).split())
+    return name if len(name) <= MAX_NAME_LENGTH else name[:MAX_NAME_LENGTH - 1].rstrip() + "…"
 
 
 def same_name(a: str, b: str) -> bool:

@@ -462,7 +462,7 @@ money = engine.money
 
 @st.dialog("Save pie")
 def save_dialog():
-    name = st.text_input("Pie name", value=st.session_state.pie_name)
+    name = st.text_input("Pie name", value=st.session_state.pie_name, max_chars=storage.MAX_NAME_LENGTH)
     # saving under the name of one of your saved pies updates it instead of adding a copy
     mine = [p for p in active_storage.list_pies(user_id=user_id)
             if not shared_storage or p.get("owner_id") == user_id]
@@ -489,7 +489,7 @@ def save_dialog():
 @st.dialog("Edit saved pie")
 def edit_dialog(pie):
     """Rename a saved pie, or make it public or private."""
-    name = st.text_input("Name", value=pie["name"])
+    name = st.text_input("Name", value=pie["name"], max_chars=storage.MAX_NAME_LENGTH)
     is_pub = st.toggle("Public", value=bool(pie.get("is_public")),
                        help="Public pies are listed for everyone who opens the app, signed in or not.")
     # two of your pies can't share a name: saving under a name updates that pie
@@ -808,6 +808,8 @@ with strip:
             f".st-key-chip_{k}{{border-color:{c} !important;border-radius:999px !important;padding:0 10px !important}}"
             f".st-key-chip_name_{k} p::before{{content:'●';color:{c};margin-right:6px}}"
             for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}"
+            # a long name is cut with "…", so the ✕ stays on the chip's line
+            "[class*='st-key-chip_name_'] p{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
             # ✕ shows only its icon; the label stays for screen readers ("Remove <pie>")
             "[class*='st-key-chip_x_'] [data-testid=stMarkdownContainer]{position:absolute;width:1px;height:1px;"
             "overflow:hidden;clip-path:inset(50%);white-space:nowrap}"

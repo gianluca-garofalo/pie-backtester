@@ -170,3 +170,10 @@ def test_an_unfinished_pie_can_be_opened_but_not_saved():
 
 def test_a_weight_of_true_is_refused():
     assert not validate_pie({"assets": [{"ticker": "A", "weight": True}]}, whole=False)[0]
+
+
+def test_long_names_are_shortened():
+    from storage import MAX_NAME_LENGTH, clean_name
+    name = clean_name("L" * 300)
+    assert len(name) == MAX_NAME_LENGTH and name.endswith("…")
+    assert clean_name("Short") == "Short"
