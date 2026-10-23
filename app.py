@@ -1204,14 +1204,25 @@ def coverage_figure(names):
                                  line=dict(color="rgba(138,141,150,.25)", width=10)))
         full, (ticker, listed) = history.get(n, (None, (None, None)))
         no_prices_until = min(full if full is not None else t1, t1)
+        used = results[n]["total"].index[0] if n in results else None
+        # with cash the results start before every asset has prices: those days are drawn dashed instead
+        cash_until = no_prices_until if used is not None and used + pd.Timedelta(days=3) < no_prices_until else None
+        if cash_until is not None:
+            no_prices_until = used
         if ticker and no_prices_until > t0 + pd.Timedelta(days=3):
             fig.add_trace(go.Scatter(x=[t0, no_prices_until], y=[row] * 2, mode="lines", name="no prices yet",
                                      line=dict(color="#8a8d96", width=2, dash="dot")))
             fig.add_annotation(x=t0 + (no_prices_until - t0) / 2, y=row, yshift=11, showarrow=False,
                                text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
             shown.add("dotted")
-        if n in results:
-            used = results[n]["total"].index[0]
+        if cash_until is not None:
+            fig.add_trace(go.Scatter(x=[used, cash_until], y=[row] * 2, mode="lines", name="cash until listed",
+                                     line=dict(color=pie_colors[n], width=4, dash="dash")))
+            fig.add_annotation(x=used + (cash_until - used) / 2, y=row, yshift=11, showarrow=False,
+                               text=f"cash until {html.escape(ticker)} lists", font=dict(size=10, color="#5f636e"))
+            shown.add("dashed")
+            used = cash_until  # solid from the day every asset is bought
+        if used is not None:
             if full is not None and full + pd.Timedelta(days=3) < used:
                 fig.add_trace(go.Scatter(x=[full, used], y=[row] * 2, mode="lines", name="has prices, not used",
                                          line=dict(color=faded(pie_colors[n]), width=10)))
@@ -1227,6 +1238,7 @@ def coverage_figure(names):
     key = " ".join(text for part, text in (
         ("solid", "Solid: the days the results use."),
         ("faded", "Faded: the pie has prices, but the results don't use these days."),
+        ("dashed", "Dashed: the results use these days, but that slice waits as cash."),
         ("dotted", "Dotted: an asset has no prices yet.")) if part == "solid" or part in shown) if shown else ""
     return fig, key
 

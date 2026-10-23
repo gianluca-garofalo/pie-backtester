@@ -365,3 +365,16 @@ def test_the_strip_shows_each_pies_own_history(app):
         "e => e.data.map(t => [t.name, String(t.x[0]).slice(0, 10)])")
     assert ["has prices, not used", "2015-12-03"] in traces, traces  # the bars showed only the shared days
     expect(app.page.get_by_text("Faded: the pie has prices, but the results don't use these days.")).to_be_visible()
+
+
+def test_the_strip_shows_cash_days_apart(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2015-01-01")
+    start_choice(app).get_by_text("Start on 1 Jan 2015, holding cash until VWCE.DE lists").click()
+    app.wait()
+    traces = app.page.locator(".st-key-period .js-plotly-plot").evaluate(
+        "e => e.data.map(t => [t.name, String(t.x[0]).slice(0, 10), t.line.dash])")
+    # All-World waits as cash from 1 Jan 2015 until VWCE.DE lists: it looked fully invested
+    assert ["cash until listed", "2015-01-01", "dash"] in traces, traces
+    expect(app.page.get_by_text("Dashed: the results use these days, but that slice waits as cash.")).to_be_visible()
