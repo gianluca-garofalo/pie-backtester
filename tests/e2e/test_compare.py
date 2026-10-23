@@ -151,3 +151,9 @@ def test_phone_layout(phone):
                               if h.strip()], ["Pie", "Value", "Return", "Per year"])
     box = phone.page.get_by_role("button", name="Remove All-World ETF", exact=True).bounding_box()
     assert box["width"] >= 36 and box["height"] >= 36  # a finger-sized ✕
+    phone.page.get_by_role("button", name="Share").click()
+    share = phone.page.get_by_test_id("stPopoverBody")
+    copy = share.frame_locator("iframe").locator("#b")
+    expect(copy).to_have_text("Copy link")
+    copy.click()  # a visible copy button, also on touch screens
+    expect(copy).to_have_text("Copied ✓")

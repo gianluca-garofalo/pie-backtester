@@ -166,6 +166,9 @@ def test_share_link_restores_pie_and_settings(app):
     app.page.get_by_role("button", name="Share").click()
     link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
     assert link.startswith(app.url)
+    app.page.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    app.page.get_by_test_id("stPopoverBody").frame_locator("iframe").locator("#b").click()  # Copy link
+    assert app.page.evaluate("navigator.clipboard.readText()") == link
     assert link.split("?", 1)[1] == "p=Tech+Leaders~USD~2020-01-01~~4321~100~Q~w~QDVE.DE:50,AAPL:25,MSFT:25"
 
     app.page.goto(link)

@@ -13,6 +13,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 import engine
@@ -211,6 +212,27 @@ def flash(kind, msg):
     st.session_state.flash = (kind, msg)
 
 
+def copy_button(text, label="Copy link"):
+    """A button that copies text to the clipboard. The code block's own copy icon only shows on hover,
+    so touch screens never see it; a component frame may write to the clipboard."""
+    dark = (getattr(st.context.theme, "type", None) or "light") == "dark"
+    fg, border = ("#fafafa", "rgba(250,250,250,.3)") if dark else ("#31333f", "rgba(49,51,63,.25)")
+    components.html(f"""
+<button id="b" style="font:15px 'Source Sans Pro',sans-serif;color:{fg};background:transparent;
+  border:1px solid {border};border-radius:8px;padding:6px 14px;cursor:pointer">{html.escape(label)}</button>
+<script>
+const b = document.getElementById("b"), text = {json.dumps(text)};
+b.onclick = () => {{
+  // the hidden-textarea copy works straight away during the click; the clipboard API can wait on a
+  // permission prompt, so it's only the fallback
+  const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+  t.select(); const ok = document.execCommand("copy"); t.remove();
+  if (!ok && navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {{}});
+  b.textContent = "Copied ✓"; setTimeout(() => b.textContent = {json.dumps(label)}, 2000);
+}};
+</script>""", height=44)
+
+
 def on_phone():
     """Whether the visitor is on a phone. Streamlit doesn't tell the app the screen width, but phone
     browsers say "Mobi" in their user agent."""
@@ -232,8 +254,7 @@ def side_label(text):
     st.html(f'<div class="side-label">{text}</div>')
 
 
-# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px. A few rules
-# for touch screens (the Share box's copy button) live here too, since this CSS is on every page.
+# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px.
 # It uses Streamlit's test ids, so check it after a Streamlit upgrade.
 SIDEBAR_CSS = """<style>
 .side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
@@ -245,8 +266,6 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
-@media (pointer:coarse){[data-testid=stCode] [data-testid=stElementToolbarButton],
-  [data-testid=stCode] [data-testid=stElementToolbar]{opacity:1 !important;visibility:visible !important}}
 </style>"""
 
 
@@ -758,8 +777,10 @@ with share_pop:
         if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
             st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
         else:
-            st.code(f"{st.context.url or ''}?p={encoded_param}", language=None, wrap_lines=True)
-            st.caption("Copy this link to share your pie and its settings.")
+            link = f"{st.context.url or ''}?p={encoded_param}"
+            st.code(link, language=None, wrap_lines=True)
+            copy_button(link)
+            st.caption("The link has your pie and its settings.")
 if share_ok:
     norm_export = storage.normalize_pie(pie_data_raw)
     norm_export.pop("id")  # a fresh id is assigned when the file is saved somewhere
