@@ -125,13 +125,11 @@ def test_save_load_delete(app):
     assert app.cards() == ["E2E save test"]
 
     app.remove_pie("E2E save test")
-    app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E save test (3 assets)")  # picking it opens it
+    app.open_saved("E2E save test")  # picking it opens it
     assert app.tickers() == [a["ticker"] for a in EXAMPLES["Three-Fund Portfolio"]["assets"]]
     assert app.cards() == ["E2E save test"]
 
-    app.click("Edit", root=app.sidebar, exact=True)
-    dialog = app.page.get_by_role("dialog")
+    dialog = app.edit_saved("E2E save test")
     dialog.get_by_label("Pie name").fill("E2E renamed")
     dialog.get_by_text("Make public").click()
     dialog.get_by_role("button", name="Save changes").click()
@@ -139,26 +137,22 @@ def test_save_load_delete(app):
     expect(app.page.get_by_text("Updated 'E2E renamed' (public).")).to_be_visible()
     assert app.cards() == ["E2E renamed"]  # the open pie follows the new name
 
-    app.delete_saved()
+    app.delete_saved("E2E renamed")
     expect(app.page.get_by_text("Deleted pie 'E2E renamed'.")).to_be_visible()
-    expect(app.page.get_by_role("option", name="E2E renamed (3 assets)")).to_have_count(0)
+    expect(app.open_my_pies().get_by_role("button", name="E2E renamed", exact=True)).to_have_count(0)
 
 
 def test_export_then_import(app, tmp_path):
     app.load_example("All-World ETF")
     app.set_plan(initial=2500)
-    app.open_sidebar_section("Import / export JSON")
-    with app.page.expect_download() as dl:
-        app.sidebar.get_by_role("button", name="Download pie (.json)").click()
-    exported = json.loads(open(dl.value.path()).read())
+    exported = json.loads(open(app.download()).read())
     assert exported["name"] == "All-World ETF"
     assert exported["initial"] == 2500.0 and exported["monthly"] == 100.0
 
     path = tmp_path / "pie.json"
     path.write_text(json.dumps(dict(exported, name="Imported", initial=777.0)))
     app.remove_pie("All-World ETF")
-    app.sidebar.locator("input[type=file]").set_input_files(path)  # opens without another click
-    app.wait()
+    app.upload(path)  # opens without another click
     assert app.tickers() == ["VWCE.DE"]
     expect(app.plan).to_contain_text("777 to start")
     assert app.cards() == ["Imported"]
@@ -214,7 +208,7 @@ def test_results_wait_for_valid_settings(app):
     expect(dialog.get_by_text("Set an initial investment or a monthly deposit.")).to_be_visible()
     expect(dialog.get_by_role("button", name="Apply")).to_be_disabled()
     app.page.keyboard.press("Escape")
-    expect(app.page.get_by_role("dialog")).to_have_count(0)
+    expect(app.page.get_by_test_id("stDialog")).to_have_count(0)
     expect(app.plan).to_contain_text("€1,000 to start")  # unchanged
 
     app.set_date("From", "2026-01-01")
@@ -267,11 +261,12 @@ def test_growth_chart_controls(app):
 
 
 def test_guest_account_without_google_config(app):
-    expect(app.sidebar.get_by_role("button", name="Sign in with Google")).to_have_count(0)
-    app.click("Use guest account", root=app.sidebar)
-    expect(app.sidebar.get_by_text("Local Guest ·")).to_be_visible()
-    app.click("Log out", root=app.sidebar)
-    expect(app.sidebar.get_by_role("button", name="Use guest account")).to_be_visible()
+    account = app.page.locator(".st-key-account")
+    expect(account.get_by_role("button", name="Sign in with Google")).to_have_count(0)
+    app.click("Use guest account", root=account)
+    expect(account.get_by_text("Local Guest ·")).to_be_visible()
+    app.click("Log out", root=account)
+    expect(account.get_by_role("button", name="Use guest account")).to_be_visible()
 
 
 def test_consecutive_weight_edits_all_stick(app):
@@ -315,10 +310,8 @@ def test_amounts_keep_their_cents(app):
 def test_a_broken_file_says_why(app, tmp_path):
     path = tmp_path / "broken.json"
     path.write_text('{"assets": []}')
-    app.open_sidebar_section("Import / export JSON")
-    app.sidebar.locator("input[type=file]").set_input_files(path)
-    app.wait()
-    expect(app.sidebar.get_by_text("Could not load this file: Pie must contain at least one asset")).to_be_visible()
+    app.upload(path)
+    expect(app.page.get_by_text("Could not load this file: Pie must contain at least one asset")).to_be_visible()
     expect(app.page.get_by_text("No pies yet.")).to_be_visible()
 
 
@@ -329,13 +322,12 @@ def test_saving_under_the_same_name_updates_the_pie(app):
     app.edit_weight(1, 30)
     app.save_pie("E2E update test")
     expect(app.page.get_by_text("Updated pie 'E2E update test'.")).to_be_visible()
-    app.open_sidebar_section("Saved pies")
-    expect(app.sidebar.get_by_text("Saved pies (1)")).to_be_visible()  # updated, not copied
+    expect(app.page.get_by_role("button", name="My pies (1)")).to_be_visible()  # updated, not copied
 
     app.remove_pie("E2E update test")
-    app.choose("Saved pies", "E2E update test (2 assets)")
+    app.open_saved("E2E update test")
     assert [float(r[1]) for r in app.rows()] == [70, 30]
-    app.delete_saved()
+    app.delete_saved("E2E update test")
 
 
 def test_click_a_column_name_to_sort(app):
@@ -351,10 +343,8 @@ def test_click_a_column_name_to_sort(app):
 def test_a_file_with_text_for_an_amount_says_why(app, tmp_path):
     path = tmp_path / "lots.json"
     path.write_text(json.dumps({"name": "x", "initial": "lots", "assets": [{"ticker": "AAPL", "weight": 100}]}))
-    app.open_sidebar_section("Import / export JSON")
-    app.sidebar.locator("input[type=file]").set_input_files(path)
-    app.wait()
-    expect(app.sidebar.get_by_text("Could not load this file: 'initial' must be a number")).to_be_visible()
+    app.upload(path)
+    expect(app.page.get_by_text("Could not load this file: 'initial' must be a number")).to_be_visible()
     expect(app.page.get_by_test_id("stException")).to_have_count(0)  # no raw traceback
 
 
@@ -393,20 +383,16 @@ def test_rename_cannot_take_another_pies_name(app):
     app.save_pie("E2E dup A")
     app.load_example("Tech Leaders")
     app.save_pie("E2E dup B")
-    app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E dup B (3 assets)")
-    app.click("Edit", root=app.sidebar, exact=True)
-    dialog = app.page.get_by_role("dialog")
+    dialog = app.edit_saved("E2E dup B")
     dialog.get_by_label("Pie name").fill("e2e  DUP a")  # same name to a person: case and spaces differ
     dialog.get_by_label("Pie name").press("Enter")
     app.wait()
     expect(dialog.get_by_text("You already have a pie called 'E2E dup A'. Pick another name.")).to_be_visible()
     expect(dialog.get_by_role("button", name="Save changes")).to_be_disabled()
     app.page.keyboard.press("Escape")
-    app.delete_saved()  # tidy up: B is still picked
-    app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E dup A (1 asset)")
-    app.delete_saved()
+    expect(app.page.get_by_test_id("stDialog")).to_have_count(0)
+    app.delete_saved("E2E dup B")  # tidy up
+    app.delete_saved("E2E dup A")
 
 
 def test_an_asset_already_in_the_pie_cant_be_added_again(app):
@@ -442,14 +428,10 @@ def test_a_start_date_in_the_future_says_so(app):
 def test_a_downloaded_unfinished_pie_opens_again(app, tmp_path):
     app.load_example("60/40 Stocks & Bonds")
     app.edit_weight(0, 30)  # 30 + 40 = 70%
-    app.open_sidebar_section("Import / export JSON")
-    with app.page.expect_download() as dl:
-        app.sidebar.get_by_role("button", name="Download pie (.json)").click()
     path = tmp_path / "unfinished.json"
-    path.write_text(open(dl.value.path()).read())
+    path.write_text(open(app.download()).read())
     app.remove_pie("60/40 Stocks & Bonds")
-    app.sidebar.locator("input[type=file]").set_input_files(path)
-    app.wait()
+    app.upload(path)
     app.open_editor()
     assert [float(r[1]) for r in app.rows()] == [30, 40]  # used to say the weights must sum to 100%
     expect(app.editor.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
@@ -487,9 +469,7 @@ def test_each_card_says_whether_the_pie_is_saved(app):
     expect(status).to_have_text("Unsaved changes")
     app.save_pie("E2E status")  # updates it
     expect(status).to_have_text("Saved")
-    app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E status (2 assets)")
-    app.delete_saved()
+    app.delete_saved("E2E status")
     expect(status).to_have_text("Not saved yet")  # still open, no longer saved
 
 
@@ -534,3 +514,9 @@ def test_locked_rows_are_kept_by_split(app):
     app.wait()
     app.click("Split evenly", root=app.editor)
     assert [float(r[1]) for r in app.rows()] == [70, 15, 15]
+
+
+def test_no_sidebar(app):
+    app.load_example("All-World ETF")
+    expect(app.page.get_by_test_id("stSidebar")).to_have_count(0)  # one page, the same on phones
+    expect(app.page.get_by_role("button", name=re.compile(r"^My pies \(\d+\)$"))).to_be_visible()

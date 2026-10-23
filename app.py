@@ -71,7 +71,7 @@ MAX_COMPARED = 5  # pies in one comparison, including yours
 METHOD = (Path(__file__).parent / "docs" / "how-its-calculated.md").read_text()  # the "How it's calculated" tab
 
 CURRENCIES = storage.CURRENCIES
-# sidebar settings, keyed so a loaded pie can set them
+# settings (the period, the plan, the start rule), kept in session state so a loaded pie can set them
 for _key, _default in {"base_ccy": "EUR", "start": date(2020, 1, 1), "end": date.today(),
                        "initial": 1000.0, "monthly": 0.0, "rebalance": "Never",
                        # how pies start when an asset lists after From (engine.START_RULES); kept in a plain key
@@ -101,11 +101,11 @@ SETTING_WORDS = {  # how a pie's own settings are named in the note when it join
 
 
 def load_pie(cfg):
-    """Replace the pie with a normalized pie config, and the sidebar settings with its own.
+    """Replace the pie with a normalized pie config, and the settings with its own.
 
     The pie being replaced moves to the comparison (if it's complete and not the same pie),
     so loading several pies one after another compares them; ✕ removes one. All compared pies
-    share the sidebar settings, so a pie added to a comparison keeps the current ones.
+    share the settings, so a pie added to a comparison keeps the current ones.
     Returns False, changing nothing, when the comparison has no room for the pie being replaced.
     """
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
@@ -117,7 +117,6 @@ def load_pie(cfg):
         flash("warning", f"You can compare up to {MAX_COMPARED} pies, including the one you're editing. "
                          f"Remove one first, then open '{md(cfg.get('name') or 'Pie')}'.")
         return False
-    st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     already = next((e for e in st.session_state.compare if e["weights"] == loaded), None)
     st.session_state.compare = others
     if moving:
@@ -296,19 +295,9 @@ def amount_format(key):
     return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
 
 
-def side_label(text):
-    """A small upper-case section heading in the sidebar."""
-    st.html(f'<div class="side-label">{text}</div>')
-
-
-# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px.
-# It uses Streamlit's test ids, so check it after a Streamlit upgrade.
-SIDEBAR_CSS = """<style>
-.side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
+# Page-wide CSS. Some rules use Streamlit's test ids and st-key classes, so check them after a Streamlit upgrade.
+PAGE_CSS = """<style>
 .st-key-plan_initial button,.st-key-plan_monthly button{display:none}  /* the +/- steppers */
-[data-testid=stSidebar] [data-testid=stExpander] details{border:none;background:none}
-[data-testid=stSidebar] [data-testid=stExpander] summary{padding:0;min-height:1.6rem}
-[data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
 .card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -433,7 +422,7 @@ def fix_tickers(ccy):
     draft_changed()
 
 
-EARLIEST = date(1970, 1, 1)  # the earliest start the sidebar allows
+EARLIEST = date(1970, 1, 1)  # the earliest start the From field allows
 
 
 @st.cache_resource(show_spinner=False)
@@ -654,7 +643,6 @@ def delete_dialog(pie):
     st.write(f"Delete '{md(pie['name'])}' from your saved pies? This can't be undone.")
     if st.button("Delete", type="primary", key="delete_confirm"):
         if active_storage.delete_pie(pie["id"], user_id=user_id):
-            st.session_state.clear_saved_pick = True
             if (st.session_state.saved_ref or {}).get("id") == pie["id"]:
                 st.session_state.saved_ref = None  # still open, but no longer saved
             flash("success", f"Deleted pie '{md(pie['name'])}'.")
@@ -662,18 +650,14 @@ def delete_dialog(pie):
         st.error(f"Could not delete pie '{md(pie['name'])}'.")
 
 
-# ---------------- sidebar: your pies, then the account ----------------
-with st.sidebar:
-    st.html(SIDEBAR_CSS)
-    pies_box, account_box = st.container(), st.container()
-
-with account_box:
-    st.divider()
-    if supabase_url and legacy_anon_key and not supabase_key:
-        st.warning("`SUPABASE_KEY` (the anon key) is no longer used. Set `SUPABASE_SERVICE_KEY` "
-                   "to store pies in Supabase (see README). Pies are saved on this machine for now.")
+# ---------------- the account, on one line at the top (there's no sidebar) ----------------
+st.html(PAGE_CSS)
+if supabase_url and legacy_anon_key and not supabase_key:
+    st.warning("`SUPABASE_KEY` (the anon key) is no longer used. Set `SUPABASE_SERVICE_KEY` "
+               "to store pies in Supabase (see README). Pies are saved on this machine for now.")
+with st.container(horizontal=True, horizontal_alignment="right"):
     current_user = auth.render_auth_ui(allow_guest=not shared_storage)
-    user_id = current_user.get("id") if current_user else None
+user_id = current_user.get("id") if current_user else None
 
 # the money settings are plain keys, changed only through the Plan dialog (or a loaded pie)
 base_ccy, initial, monthly, rebalance = (st.session_state[k] for k in ("base_ccy", "initial", "monthly", "rebalance"))
@@ -710,71 +694,66 @@ def plan_dialog():
 
 examples = storage.list_examples()
 
-with pies_box:
-    st.divider()
-    side_label("My pies")
-    saved_pies = active_storage.list_pies(user_id=user_id)
+# ---------------- header: title and actions ----------------
+saved_pies = active_storage.list_pies(user_id=user_id)
+head, actions = st.columns([3, 2], vertical_alignment="bottom")
+with head.container(horizontal=True, vertical_alignment="center"):
+    st.title("Pie backtester", width="content")
+    # a new key after opening a pie draws a fresh, closed menu (as for Examples)
+    my_pies = st.popover(f"My pies ({len(saved_pies)})", key=f"my_pies_{st.session_state.setdefault('my_pies_round', 0)}",
+                         on_change="rerun")
+
+
+def is_mine(p):
+    return not shared_storage or p.get("owner_id") == user_id
+
+
+with my_pies:
     if getattr(active_storage, "last_error", None):
         st.warning(f"Supabase answered with an error, so saved pies can't be shown: {active_storage.last_error}.")
-    with st.expander(f"Saved pies ({len(saved_pies)})"):
-        if saved_pies:
-            def is_mine(p):
-                return not shared_storage or p.get("owner_id") == user_id
-
-            by_id = {p["id"]: p for p in saved_pies}
-            if st.session_state.pop("clear_saved_pick", False):  # deleted, or another pie was opened
-                st.session_state.saved_pick = st.session_state.opened_saved_id = None
-            elif st.session_state.get("saved_pick") not in by_id:
-                # a rename changes the option's label, and Streamlit then resets the box: keep the open pie
-                opened = st.session_state.get("opened_saved_id")
-                st.session_state.saved_pick = opened if opened in by_id else None
-            # picking a pie opens it, like picking a file; Edit and Delete act on the picked pie
-            picked = st.selectbox(
-                "Saved pies", list(by_id), key="saved_pick", label_visibility="collapsed",
-                placeholder="Pick a pie to open",
-                format_func=lambda i: f"{by_id[i]['name']} ({len(by_id[i]['assets'])} "
-                                      f"asset{'' if len(by_id[i]['assets']) == 1 else 's'})"
-                                      + ("" if is_mine(by_id[i]) else " · public"))
-            if picked and picked != st.session_state.get("opened_saved_id"):
-                if load_pie(by_id[picked]):
-                    st.session_state.opened_saved_id, st.session_state.clear_saved_pick = picked, False
-                    st.session_state.saved_ref = saved_ref_of(by_id[picked])
-                else:
-                    st.session_state.clear_saved_pick = True  # not opened: don't show it as picked
+    for p in saved_pies:
+        with st.container(horizontal=True, vertical_alignment="center", gap="small", key=f"saved_row_{p['id']}"):
+            # picking a pie opens it, like picking a file
+            if st.button(md(p["name"]), key=f"my_open_{p['id']}", type="tertiary", width="stretch"):
+                if load_pie(p):
+                    st.session_state.saved_ref = saved_ref_of(p)
+                st.session_state.my_pies_round += 1  # closes the menu
                 st.rerun()
-            target_sp = by_id.get(picked)
-            if target_sp and is_mine(target_sp):
-                with st.container(horizontal=True, gap="small"):
-                    # no tooltip: it stayed on screen after the dialog closed, over the list
-                    if st.button("Edit", key="edit_saved", width="stretch"):
-                        edit_dialog(target_sp)
-                    if st.button("Delete", key="delete_saved", width="stretch"):
-                        delete_dialog(target_sp)
-        else:
-            st.caption("No saved pies yet. Use Save at the top to keep a pie.")
+            st.caption(f"{len(p['assets'])} asset{'' if len(p['assets']) == 1 else 's'}"
+                       + ("" if is_mine(p) else " · public"), width="content")
+            if is_mine(p):
+                # the menu closes first, or it stays on top of the dialog; no tooltips: they stayed on screen
+                for label, dialog in (("Edit", "edit"), ("Delete", "delete")):
+                    if st.button(label, key=f"{dialog}_saved_{p['id']}"):
+                        st.session_state.saved_dialog = (dialog, p)
+                        st.session_state.my_pies_round += 1
+                        st.rerun()
+    if not saved_pies:
+        st.caption("No saved pies yet. Use Save to keep a pie.")
+    st.divider()
+    export_slot = st.empty()  # filled after the share link, with the open pie
+    uploaded = st.file_uploader("Import a pie (.json)", type="json")
+    if uploaded is not None:
+        # opens as soon as it's picked; file_id keeps it from opening again on every rerun
+        try:
+            uploaded.seek(0)
+            raw_content = json.load(uploaded)
+            # a downloaded unfinished pie (not at 100%) opens too: the editor's total line takes over
+            is_valid, err = storage.validate_pie(raw_content, whole=False)
+        except Exception as e:
+            is_valid, err = False, f"it isn't valid JSON ({e})"
+        if not is_valid:
+            st.error(f"Could not load this file: {err}")
+        elif st.session_state.get("loaded_file_id") != uploaded.file_id:
+            st.session_state.loaded_file_id = uploaded.file_id
+            load_pie(storage.normalize_pie(raw_content, whole=False))
+            st.session_state.my_pies_round += 1
+            st.rerun()
 
-    with st.expander("Import / export JSON"):
-        export_slot = st.empty()  # filled after the pie table, so the file has this run's edits
-        uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
-        if uploaded is not None:
-            # opens as soon as it's picked; file_id keeps it from opening again on every rerun
-            try:
-                uploaded.seek(0)
-                raw_content = json.load(uploaded)
-                # a downloaded unfinished pie (not at 100%) opens too: the total line and Scale to 100% take over
-                is_valid, err = storage.validate_pie(raw_content, whole=False)
-            except Exception as e:
-                is_valid, err = False, f"it isn't valid JSON ({e})"
-            if not is_valid:
-                st.error(f"Could not load this file: {err}")
-            elif st.session_state.get("loaded_file_id") != uploaded.file_id:
-                st.session_state.loaded_file_id = uploaded.file_id
-                load_pie(storage.normalize_pie(raw_content, whole=False))
-                st.rerun()
+if "saved_dialog" in st.session_state:  # Edit or Delete in My pies, now that the menu is closed
+    _which, _saved = st.session_state.pop("saved_dialog")
+    (edit_dialog if _which == "edit" else delete_dialog)(_saved)
 
-# ---------------- header: title and actions ----------------
-head, actions = st.columns([3, 2], vertical_alignment="bottom")
-head.title("Pie backtester")
 with actions.container(horizontal=True, horizontal_alignment="right"):
     # A new key after each pick draws a fresh, closed menu. Forcing the old one's state closed instead
     # raced with a quick next click on Examples, which then needed a second click.

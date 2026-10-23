@@ -67,7 +67,6 @@ class App:
 
     def __init__(self, page: Page, url: str):
         self.page, self.url = page, url
-        self.sidebar = page.get_by_test_id("stSidebar")
         self.errors = []
         page.on("pageerror", lambda e: self.errors.append(str(e)))
 
@@ -137,7 +136,7 @@ class App:
     # --- the editor: a dialog; the page changes only on Apply ---
     @property
     def editor(self):
-        return self.page.get_by_role("dialog").filter(has=self.page.get_by_role("textbox", name="Pie name"))
+        return self.page.get_by_test_id("stDialog").filter(has=self.page.get_by_role("textbox", name="Pie name"))
 
     def open_editor(self, name=None):
         """The editor on a pie (default: the open one), or on a new pie when there's none."""
@@ -153,13 +152,13 @@ class App:
 
     def close_editor(self):
         """Close without applying, with the dialog's ✕ (Escape would first go to a selected table cell)."""
-        self.page.get_by_role("dialog").get_by_role("button", name="Close").click()
-        expect(self.page.get_by_role("dialog")).to_have_count(0)
+        self.page.get_by_test_id("stDialog").get_by_role("button", name="Close").click()
+        expect(self.page.get_by_test_id("stDialog")).to_have_count(0)
         self.wait()
 
     def apply(self):
         self.editor.get_by_role("button", name="Apply").click()
-        expect(self.page.get_by_role("dialog")).to_have_count(0)
+        expect(self.page.get_by_test_id("stDialog")).to_have_count(0)
         self.wait()
 
     def search(self, query):
@@ -199,24 +198,51 @@ class App:
 
     def save_pie(self, name):
         self.page.get_by_role("button", name="Save", exact=True).click()
-        dialog = self.page.get_by_role("dialog")
+        dialog = self.page.get_by_test_id("stDialog")
         dialog.get_by_label("Pie name").fill(name)
         dialog.get_by_label("Pie name").press("Enter")  # the button says "Update pie" if the name is taken
         self.wait()
         dialog.get_by_role("button", name=re.compile("^(Save|Update) pie$")).click()
         self.wait()
 
-    def delete_saved(self):
-        """Delete the saved pie that's picked in the sidebar, confirming in the dialog."""
-        self.click("Delete", root=self.sidebar, exact=True)
-        self.page.get_by_role("dialog").get_by_role("button", name="Delete").click()
+    # --- My pies: a menu in the header with your saved pies, import and download ---
+    def open_my_pies(self):
+        body = self.page.get_by_test_id("stPopoverBody").filter(has=self.page.locator("input[type=file]"))
+        if not (body.count() and body.is_visible()):
+            self.page.get_by_role("button", name=re.compile(r"^My pies")).click()
+        expect(body).to_be_visible()
+        return body
+
+    def saved_row(self, name):
+        return self.open_my_pies().locator("[class*='st-key-saved_row_']").filter(
+            has=self.page.get_by_role("button", name=name, exact=True))
+
+    def open_saved(self, name):
+        """Open a saved pie: picking it opens it."""
+        self.saved_row(name).get_by_role("button", name=name, exact=True).click()
         self.wait()
 
-    def open_sidebar_section(self, title):
-        section = self.sidebar.get_by_test_id("stExpander").filter(has_text=title)
-        if section.locator("details").get_attribute("open") is None:
-            section.locator("summary").click()
-            self.page.wait_for_timeout(300)
+    def edit_saved(self, name):
+        self.saved_row(name).get_by_role("button", name="Edit", exact=True).click()
+        dialog = self.page.get_by_test_id("stDialog")
+        expect(dialog).to_be_visible()
+        return dialog
+
+    def delete_saved(self, name):
+        """Delete a saved pie, confirming in the dialog."""
+        self.saved_row(name).get_by_role("button", name="Delete", exact=True).click()
+        self.page.get_by_test_id("stDialog").get_by_role("button", name="Delete").click()
+        self.wait()
+
+    def upload(self, path):
+        self.open_my_pies().locator("input[type=file]").set_input_files(path)
+        self.wait()
+
+    def download(self):
+        """Download the open pie's file; returns its path."""
+        with self.page.expect_download() as dl:
+            self.open_my_pies().get_by_role("button", name="Download pie (.json)").click()
+        return dl.value.path()
 
     # --- the plan: the money settings, changed in the Edit plan dialog ---
     @property
@@ -225,7 +251,7 @@ class App:
 
     def open_plan(self):
         self.plan.get_by_role("button", name="Edit plan").click()
-        dialog = self.page.get_by_role("dialog")
+        dialog = self.page.get_by_test_id("stDialog")
         expect(dialog).to_be_visible()
         return dialog
 

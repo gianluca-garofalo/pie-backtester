@@ -42,7 +42,7 @@ def get_current_user(allow_guest: bool = True) -> dict[str, str] | None:
 
 
 def render_auth_ui(allow_guest: bool = True) -> dict[str, str] | None:
-    """Render the one-line account area in the sidebar: "<name> · Log out" or "Guest · Sign in with Google".
+    """Render the one-line account area at the top: "<name> · Log out" or "Guest · Sign in with Google".
 
     allow_guest=False when pies are stored in a shared database: every guest has the
     same id, so guests would see and delete each other's pies.
@@ -54,7 +54,7 @@ def render_auth_ui(allow_guest: bool = True) -> dict[str, str] | None:
         # st.login() can only fail without secrets, so don't offer it
         st.warning("Google sign-in isn't set up, so pies can't be saved (see README).")
         return None
-    with st.container(key="account", horizontal=True, vertical_alignment="center", gap="small"):
+    with st.container(key="account", horizontal=True, vertical_alignment="center", gap="small", width="content"):
         if user:
             st.markdown(f"**{user.get('name') or user.get('email')}** ·", width="content")
             if st.button("Log out", key="logout_btn", type="tertiary", help=privacy):

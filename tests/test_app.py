@@ -47,13 +47,13 @@ def requests_log(monkeypatch):
     return log
 
 
-def test_supabase_errors_are_shown_in_the_sidebar(monkeypatch):
+def test_supabase_errors_are_shown_in_my_pies(monkeypatch):
     class Missing(Resp):
         status_code = 404
 
     monkeypatch.setattr(storage.requests, "get", lambda url, params=None, **kw: Missing([]))
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
-    assert any("Supabase answered with an error" in w.value and "migration" in w.value for w in at.sidebar.warning)
+    assert any("Supabase answered with an error" in w.value and "migration" in w.value for w in at.warning)
 
 
 def run_app(**secrets):
@@ -80,10 +80,10 @@ def test_anonymous_visitor_cannot_save_or_delete(requests_log):
     at.button(key="ex_pop_0").click().run()  # an example pie, from the Examples menu
     assert at.session_state.pie
     assert at.button(key="save_open").disabled  # saving needs a signed-in user
-    at.selectbox(key="saved_pick").select("p-other").run()  # picking a pie opens it
+    at.button(key="my_open_p-other").click().run()  # picking a pie opens it
     assert [a["Ticker"] for a in at.session_state.pie] == ["VWCE.DE"]
     keys = [b.key for b in at.button]
-    assert "delete_saved" not in keys and "edit_saved" not in keys  # someone else's public pie
+    assert "delete_saved_p-other" not in keys and "edit_saved_p-other" not in keys  # someone else's public pie
 
 
 def test_old_anon_key_secret_falls_back_with_a_warning(requests_log):
@@ -109,8 +109,7 @@ def test_signed_in_owner_gets_delete_with_a_confirmation(requests_log, monkeypat
     monkeypatch.setattr(auth, "get_current_user",
                         lambda allow_guest=True: {"id": "google:123", "name": "Me", "email": "me@example.com"})
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
-    at.selectbox(key="saved_pick").select("p-mine").run()
-    [delete] = [b for b in at.button if b.label == "Delete"]
-    delete.click().run()
+    at.button(key="my_open_p-mine").click().run()
+    at.button(key="delete_saved_p-mine").click().run()
     assert at.button(key="delete_confirm").label == "Delete"  # it asks first
     assert not any(method == "delete" for method, _ in requests_log)  # nothing deleted yet

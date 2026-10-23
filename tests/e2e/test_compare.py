@@ -180,9 +180,7 @@ def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):
     assert len(before) == 5
     path = tmp_path / "sixth.json"
     path.write_text(json.dumps({"name": "Sixth", "assets": [{"ticker": "EIMI.L", "weight": 100}]}))
-    app.open_sidebar_section("Import / export JSON")
-    app.sidebar.locator("input[type=file]").set_input_files(path)
-    app.wait()
+    app.upload(path)
     expect(app.page.get_by_text("Remove one first, then open 'Sixth'.")).to_be_visible()
     assert app.cards() == before  # the pie being edited used to be dropped here
 
