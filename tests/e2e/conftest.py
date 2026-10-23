@@ -38,7 +38,10 @@ def app_url(tmp_path_factory):
     port = _free_port()
     proc = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", str(APP), "--server.headless=true",
-         f"--server.port={port}", "--browser.gatherUsageStats=false"],
+         f"--server.port={port}", "--browser.gatherUsageStats=false",
+         # Streamlit also reads .streamlit/secrets.toml next to app.py, which would point the
+         # tests at the real Supabase project; this file doesn't exist, so there are no secrets
+         f"--secrets.files={workdir / 'no-secrets.toml'}"],
         cwd=workdir, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
         env={**os.environ, "HOME": str(workdir)},  # ignore ~/.streamlit/secrets.toml
     )
