@@ -6,7 +6,7 @@ A Streamlit app that backtests a Trading 212-style pie of ETFs and stocks using 
 
 - `app.py`: the Streamlit UI (one script that reruns on every interaction)
 - `engine.py`: data loading (yfinance), ticker resolution, simulation, metrics. Contains no UI code.
-- `editing.py`: what the pie editor does to its rows (lock-aware split and scale, pasted lists, adding an asset). Contains no UI code.
+- `editing.py`: what the pie editor does to its rows (lock-aware split and scale, adding an asset). Contains no UI code.
 - `storage.py`: pie schema (`validate_pie` / `normalize_pie`), local JSON backend, Supabase backend
 - `sharing.py`: `?pie=` share-link encoding (zlib + urlsafe base64)
 - `auth.py`: Streamlit native Google auth, plus a local guest account (local storage only)

@@ -23,7 +23,7 @@ Open http://localhost:8501 in your browser.
 ## How to Use
 
 1. **Load or Create a Pie**: Pick an example under **Examples** at the top, open a saved pie or a `.json` file from **My pies**, or click **New pie** and search by ISIN, ticker or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`).
-2. **Edit it**: **Edit** on a pie's card opens the editor. The live total shows how much is left; "Split evenly" and "Scale to 100%" leave locked rows alone, and "Paste a list" takes rows copied from a spreadsheet. Nothing changes on the page until **Apply**.
+2. **Edit it**: **Edit** on a pie's card opens the editor. The live total shows how much is left; "Split evenly" and "Scale to 100%" leave locked rows alone. Nothing changes on the page until **Apply**.
 3. **Pick the period and the plan**: The period bar at the top (1Y to Max, or your own dates) is the only place time is set. **Edit plan** sets the currency, initial amount, monthly deposit and rebalancing.
 4. **See the Results**: Each pie gets a card with its value, gain on money put in, return, yearly growth and worst fall. The Growth, By asset and Holdings tabs follow below; zooming a chart is only for looking closer.
 5. **Assets that list later**: When an asset has no prices yet at the start, a card under the dates says so and lets you choose: start every pie on the same later day (the default, so they can be ranked), each pie from its own first price, or hold cash until the asset lists.

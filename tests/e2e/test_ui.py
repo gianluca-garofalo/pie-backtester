@@ -486,22 +486,6 @@ def test_editor_applies_only_on_apply(app):
     assert app.results() != before
 
 
-def test_paste_a_list_previews_first(app):
-    app.load_example("Tech Leaders")
-    editor = app.open_editor()
-    editor.get_by_text("Paste a list").click()
-    box = editor.get_by_role("textbox", name="One ticker and weight per line")
-    box.fill("Ticker\tWeight\nVWCE.DE\t60%\nAAPL 40\nZZZZ9 5\nnonsense")
-    box.press("Control+Enter")
-    app.wait()
-    expect(editor.get_by_text("Couldn't read line 5: nonsense.")).to_be_visible()
-    preview = editor.get_by_test_id("stDataFrame").nth(1)
-    assert [r[:2] for r in app.rows(preview)] == [["VWCE.DE", "VWCE.DE"], ["AAPL", "AAPL"], ["ZZZZ9", "not found"]]
-    assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]  # nothing replaced yet
-    app.click("Replace rows", root=editor)
-    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
-
-
 def test_locked_rows_are_kept_by_split(app):
     app.load_example("Three-Fund Portfolio")
     app.edit_weight(0, 70, apply=False)
@@ -528,23 +512,6 @@ def test_delete_can_be_undone(app):
     expect(app.saved_row("E2E undo")).to_have_count(1)  # back in My pies
     expect(app.page.locator(".st-key-status_own")).to_have_text("Saved")  # and the open pie is saved again
     app.delete_saved("E2E undo")
-
-
-def test_paste_a_list_without_keyboard_shortcuts(app):
-    # typed, then a button: Ctrl+Enter isn't obvious (and an editor's browser may take it), and nothing
-    # showed until the box lost focus
-    app.load_example("Tech Leaders")
-    editor = app.open_editor()
-    editor.get_by_text("Paste a list").click()
-    box = editor.get_by_role("textbox", name="One ticker and weight per line")
-    box.click()
-    app.page.keyboard.type("VWCE.DE 60")
-    app.page.keyboard.press("Enter")
-    app.page.keyboard.type("AAPL 40")
-    editor.get_by_role("button", name="Check list").click()
-    app.wait()
-    app.click("Replace rows", root=editor)
-    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
 
 
 def test_the_editor_says_before_replacing_another_saved_pie(app):
@@ -583,23 +550,6 @@ def test_undo_doesnt_bring_back_a_duplicate_name(app):
     app.delete_saved("E2E again")
 
 
-def test_pasted_bare_tickers_find_their_european_listing_and_say_so(app):
-    app.load_example("Tech Leaders")  # EUR
-    editor = app.open_editor()
-    editor.get_by_text("Paste a list").click()
-    box = editor.get_by_role("textbox", name="One ticker and weight per line")
-    box.fill("SGLN 50\nAAPL 30\nAAPL 20\nZZZZ9 5")
-    editor.get_by_role("button", name="Check list").click()
-    app.wait()
-    preview = {r[0]: r for r in app.rows(editor.get_by_test_id("stDataFrame").nth(1))}
-    assert preview["SGLN"][1] == "SGLN.L"  # the London gold ETC, not a US OTC stock called SGLN
-    assert "check" in preview["SGLN"][-1].lower()  # the listing differs from what was typed
-    app.click("Replace rows", root=editor)
-    assert [(r[0], float(r[1])) for r in app.rows()] == [("SGLN.L", 50), ("AAPL", 50)]
-    expect(editor.get_by_text("AAPL is in the list twice: its weights were added up (50.00%).")).to_be_visible()
-    expect(editor.get_by_text("Not found, so left out: ZZZZ9.")).to_be_visible()
-
-
 def test_urls_in_names_and_crafted_tickers_stay_text(app):
     # tickers arrive from links and files too, so they're text like names
     name = "p5 see http://e.com now"
@@ -633,7 +583,6 @@ def test_quick_adds_all_land(app):
             app.page.wait_for_timeout(300)  # moving back to the search box
         app.wait()
         app.eventually(app.tickers, ["AAPL", "MSFT", "NVDA", "GOOG", "TSLA"])
-
 
 
 def test_quick_preset_clicks_end_on_the_last_one(app):
@@ -691,27 +640,11 @@ def test_an_asset_at_zero_is_named_by_the_total(app):
     expect(app.editor.get_by_text("Double-click a weight to change it.")).to_be_visible()
 
 
-def test_replace_rows_works_without_check_list(app):
-    app.load_example("Tech Leaders")
-    editor = app.open_editor()
-    editor.get_by_text("Paste a list").click()
-    box = editor.get_by_role("textbox", name="One ticker and weight per line")
-    box.click()
-    app.page.keyboard.type("VWCE.DE 60")
-    app.page.keyboard.press("Enter")
-    app.page.keyboard.type("AAPL 40")
-    app.click("Replace rows", root=editor)  # enabled while typing; one click reads the list and replaces
-    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
-
-
 def test_the_editor_on_a_phone(phone):
     phone.load_example("60/40 Stocks & Bonds")
     editor = phone.open_editor()
     box = editor.get_by_role("button", name="Apply").bounding_box()
     assert box["y"] + box["height"] <= 844, box  # reachable without scrolling past the whole editor
-    editor.get_by_text("Paste a list").click()
-    editor.get_by_role("textbox", name="One ticker and weight per line").click()
-    expect(editor.get_by_text("Ctrl+Enter")).to_have_count(0)  # no keyboard shortcut hint on a touch screen
 
 
 def test_toasts_dont_cover_the_header_buttons(app):
