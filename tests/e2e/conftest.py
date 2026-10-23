@@ -197,7 +197,7 @@ class App:
         return self.page.locator(f".st-key-window_{k}").inner_text().strip()
 
     def save_pie(self, name):
-        self.page.get_by_role("button", name="Save", exact=True).click()
+        self.page.locator(".st-key-save_open button").first.click()  # the header Save; cards have their own
         dialog = self.page.get_by_test_id("stDialog")
         dialog.get_by_label("Pie name").fill(name)
         dialog.get_by_label("Pie name").press("Enter")  # the button says "Update pie" if the name is taken

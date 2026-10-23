@@ -331,6 +331,8 @@ PAGE_CSS = """<style>
   opacity:.5;transition:opacity .2s .6s}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
+[class*='st-key-my_open_'] p{text-decoration:underline;max-width:15rem;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}  /* My pies: names look clickable; a long one is cut, not wrapped over lines */
 .card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .big-number{font-size:1.9rem;font-weight:700;line-height:1.2}
 @media (pointer:coarse){[class*='st-key-pie_card_'] button{min-width:36px;min-height:36px}}  /* finger-sized */
@@ -785,8 +787,11 @@ with my_pies:
                     st.session_state.saved_ref = saved_ref_of(p)
                 st.session_state.my_pies_round += 1  # closes the menu
                 st.rerun()
+            where = ("open" if (st.session_state.saved_ref or {}).get("id") == p["id"] else
+                     "compared" if any((e.get("saved_ref") or {}).get("id") == p["id"]
+                                       for e in st.session_state.compare) else "")
             st.caption(f"{len(p['assets'])} asset{'' if len(p['assets']) == 1 else 's'}"
-                       + ("" if is_mine(p) else " · public"), width="content")
+                       + ("" if is_mine(p) else " · public") + (f" · {where}" if where else ""), width="content")
             if is_mine(p):
                 # the menu closes first, or it stays on top of the dialog; no tooltips: they stayed on screen
                 if st.button("Edit", key=f"edit_saved_{p['id']}"):
@@ -835,7 +840,8 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
                 st.rerun()
     can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
     if st.button("Save", icon=":material/save:", key="save_open", disabled=not can_save,
-                 help=None if can_save or not st.session_state.pie else "Sign in to save pies."):
+                 help=(f"Save '{md(st.session_state.pie_name)}', the open pie" if can_save else
+                       None if not st.session_state.pie else "Sign in to save pies.")):
         save_dialog()
     share_pop = st.popover("Share", icon=":material/share:", disabled=not st.session_state.pie)
 
@@ -1339,6 +1345,14 @@ def pie_card(k):
             status, color = status_of(k)
             with st.container(key=f"status_{k}", width="content"):
                 st.badge(status, color=color)
+            # Save right where it says "not saved"; the header Save is for the open pie only
+            if status != "Saved" and not (shared_storage and not user_id) and st.button(
+                    "Save", key=f"save_{k}", type="tertiary", icon=":material/save:",
+                    disabled=k != "own" and not own_complete):
+                if k != "own":
+                    open_compared(int(k))  # saving works on the open pie
+                st.session_state.open_save = True
+                st.rerun()
             st.caption(f"{len(rows)} asset{'' if len(rows) == 1 else 's'}")
         with st.container(horizontal=True, gap="small"):
             if st.button("Edit", key=f"edit_{k}", disabled=k != "own" and not own_complete,
@@ -1504,6 +1518,8 @@ with pies_slot:
                     with col:
                         pie_card(k)
 
+if st.session_state.pop("open_save", False):
+    save_dialog()
 if st.session_state.pop("open_editor", False):
     (new_pie_editor if st.session_state.draft_new else pie_editor)()
 

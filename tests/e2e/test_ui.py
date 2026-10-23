@@ -18,7 +18,7 @@ def test_empty_page(app):
     expect(app.page.get_by_text("No pies yet. Pick one from Examples at the top, or start a new pie.")).to_be_visible()
     expect(app.page.get_by_role("button", name="New pie")).to_be_visible()
     expect(app.page.get_by_role("button", name="Run backtest")).to_have_count(0)  # results update by themselves
-    expect(app.page.get_by_role("button", name="Save", exact=True)).to_be_disabled()
+    expect(app.page.locator(".st-key-save_open button").first).to_be_disabled()
 
 
 @pytest.mark.parametrize("name", list(EXAMPLES))
@@ -288,7 +288,7 @@ def test_how_its_calculated_tab(app):
 def test_standard_actions_have_icons_and_words(app):
     app.load_example("All-World ETF")
     for name in ("Examples", "Save", "Share"):
-        button = app.page.get_by_role("button", name=name, exact=True)
+        button = app.page.get_by_role("button", name=name, exact=True).first  # the header's (cards have a Save too)
         expect(button).to_be_visible()  # the word is the accessible name
         expect(button.get_by_test_id("stIconMaterial").first).to_be_visible()  # popovers add an arrow icon after it
 
@@ -748,3 +748,27 @@ def test_results_show_exact_values_and_name_the_pie_in_the_tabs(app):
     for tab in ("By asset", "Holdings"):
         app.page.get_by_role("tab", name=tab).click()
         expect(app.page.get_by_role("tabpanel", name=tab)).to_contain_text("All-World ETF · the open pie")
+
+
+def test_save_from_a_card_and_my_pies_marks_it(app):
+    app.load_example("All-World ETF")
+    app.load_example("Tech Leaders")  # All-World is compared now
+    app.card("All-World ETF").get_by_role("button", name="Save", exact=True).click()
+    dialog = app.page.get_by_test_id("stDialog")
+    expect(dialog.get_by_label("Pie name")).to_have_value("All-World ETF")  # the card's pie, not the last opened
+    dialog.get_by_label("Pie name").fill("E2E card save")
+    dialog.get_by_label("Pie name").press("Enter")
+    app.wait()
+    dialog.get_by_role("button", name=re.compile("^(Save|Update) pie$")).click()
+    app.wait()
+    expect(app.page.locator(".st-key-status_own")).to_have_text("Saved")  # it's the open pie now
+    expect(app.saved_row("E2E card save")).to_contain_text("open")  # My pies marks it
+    app.delete_saved("E2E card save")
+
+
+def test_long_names_in_my_pies_are_cut(app):
+    app.open("?p=" + "W" * 60 + "~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:100")
+    app.save_pie("E2E " + "W" * 50)
+    name = app.saved_row("E2E " + "W" * 50).get_by_role("button").first.locator("p")
+    assert name.bounding_box()["height"] < 30  # one line, cut with "…", instead of a row broken over lines
+    app.delete_saved("E2E " + "W" * 50)
