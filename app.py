@@ -2,6 +2,7 @@
 
 Run with:  streamlit run app.py
 """
+import copy
 import html
 import json
 import re
@@ -119,6 +120,7 @@ def load_pie(cfg):
         return False
     already = next((e for e in st.session_state.compare if e["weights"] == loaded), None)
     st.session_state.compare = others
+    st.session_state.pop("undo", None)  # Undo is for the last change only
     if moving:
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
@@ -170,6 +172,20 @@ def load_pie(cfg):
     return True
 
 
+UNDOABLE = ("pie", "pie_name", "own_color", "own_order", "saved_ref", "compare")  # what Remove can undo
+
+
+def snapshot():
+    """The loaded pies as they are, for Undo."""
+    return copy.deepcopy({k: st.session_state[k] for k in UNDOABLE})
+
+
+def restore(snap):
+    for k, v in copy.deepcopy(snap).items():
+        st.session_state[k] = v
+    pie_changed()
+
+
 def close_open_pie():
     """✕ on the pie being edited: drop it and open the most recently compared pie instead."""
     if not st.session_state.compare:
@@ -190,6 +206,7 @@ def close_open_pie():
 def open_compared(i):
     """Click on a compared pie: it opens in the table, and the pie being edited takes its place."""
     e = st.session_state.compare[i]
+    st.session_state.pop("undo", None)
     current = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     if current:
         st.session_state.compare[i] = {
@@ -637,17 +654,29 @@ def edit_dialog(pie):
         st.error(f"Could not update pie '{md(pie['name'])}'.")
 
 
-@st.dialog("Delete pie")
-def delete_dialog(pie):
-    """Deleting can't be undone, so it asks first."""
-    st.write(f"Delete '{md(pie['name'])}' from your saved pies? This can't be undone.")
-    if st.button("Delete", type="primary", key="delete_confirm"):
-        if active_storage.delete_pie(pie["id"], user_id=user_id):
-            if (st.session_state.saved_ref or {}).get("id") == pie["id"]:
-                st.session_state.saved_ref = None  # still open, but no longer saved
-            flash("success", f"Deleted pie '{md(pie['name'])}'.")
-            st.rerun()
-        st.error(f"Could not delete pie '{md(pie['name'])}'.")
+def delete_saved(pie):
+    """Delete a saved pie at once; Undo saves it again, with the same id."""
+    if not active_storage.delete_pie(pie["id"], user_id=user_id):
+        flash("error", f"Could not delete pie '{md(pie['name'])}'.")
+        return
+    was_open = (st.session_state.saved_ref or {}).get("id") == pie["id"]
+    if was_open:
+        st.session_state.saved_ref = None  # still open, but no longer saved
+    st.session_state.undo = {"label": f"Deleted '{pie['name']}'.", "kind": "delete",
+                             "data": {"pie": pie, "was_open": was_open}}
+
+
+def undo_last():
+    u = st.session_state.pop("undo")
+    if u["kind"] == "remove":
+        restore(u["data"])
+        return
+    try:
+        saved = active_storage.save_pie(u["data"]["pie"], user_id=user_id)
+        if u["data"]["was_open"]:
+            st.session_state.saved_ref = saved_ref_of(saved)
+    except Exception as e:
+        flash("error", f"Could not bring back '{md(u['data']['pie']['name'])}': {e}")
 
 
 # ---------------- the account, on one line at the top (there's no sidebar) ----------------
@@ -723,11 +752,14 @@ with my_pies:
                        + ("" if is_mine(p) else " · public"), width="content")
             if is_mine(p):
                 # the menu closes first, or it stays on top of the dialog; no tooltips: they stayed on screen
-                for label, dialog in (("Edit", "edit"), ("Delete", "delete")):
-                    if st.button(label, key=f"{dialog}_saved_{p['id']}"):
-                        st.session_state.saved_dialog = (dialog, p)
-                        st.session_state.my_pies_round += 1
-                        st.rerun()
+                if st.button("Edit", key=f"edit_saved_{p['id']}"):
+                    st.session_state.saved_dialog = p
+                    st.session_state.my_pies_round += 1
+                    st.rerun()
+                if st.button("Delete", key=f"delete_saved_{p['id']}"):  # at once: Undo shows on the page
+                    delete_saved(p)
+                    st.session_state.my_pies_round += 1
+                    st.rerun()
     if not saved_pies:
         st.caption("No saved pies yet. Use Save to keep a pie.")
     st.divider()
@@ -750,9 +782,8 @@ with my_pies:
             st.session_state.my_pies_round += 1
             st.rerun()
 
-if "saved_dialog" in st.session_state:  # Edit or Delete in My pies, now that the menu is closed
-    _which, _saved = st.session_state.pop("saved_dialog")
-    (edit_dialog if _which == "edit" else delete_dialog)(_saved)
+if "saved_dialog" in st.session_state:  # Edit in My pies, now that the menu is closed
+    edit_dialog(st.session_state.pop("saved_dialog"))
 
 with actions.container(horizontal=True, horizontal_alignment="right"):
     # A new key after each pick draws a fresh, closed menu. Forcing the old one's state closed instead
@@ -836,6 +867,7 @@ def apply_draft():
     False when there's no room for it."""
     name = storage.clean_name(st.session_state.draft_name) or "My Pie"
     rows = [dict(r) for r in st.session_state.draft]
+    st.session_state.pop("undo", None)
     if not st.session_state.draft_new:
         st.session_state.pie, st.session_state.pie_name = rows, name
         pie_changed()
@@ -1244,10 +1276,12 @@ def pie_card(k):
                                    "assets": [{"ticker": t, "weight": w, "name": n} for t, n, w in rows]})
                 st.rerun()
             if st.button("Remove", key=f"remove_{k}"):
+                undo = {"label": f"Removed '{plain_name(name)}'.", "kind": "remove", "data": snapshot()}
                 if k == "own":
                     close_open_pie()
                 else:
                     st.session_state.compare.pop(int(k))
+                st.session_state.undo = undo
                 st.rerun()
         if rows:
             st.plotly_chart(donut(rows, readable(pie_colors[name]), 180 if phone else 240), key=f"donut_{k}",
@@ -1349,6 +1383,12 @@ def card_css():
 
 
 with pies_slot:
+    if "undo" in st.session_state:  # what the last Remove or Delete did, and a way back
+        with st.container(horizontal=True, vertical_alignment="center", key="undo_note"):
+            st.caption(md(st.session_state.undo["label"]), width="content")
+            if st.button("Undo", key="undo_button", type="tertiary"):
+                undo_last()
+                st.rerun()
     if not card_keys:
         # no example buttons here: examples live in the header menu
         st.info("No pies yet. Pick one from Examples at the top, or start a new pie.")
@@ -1363,6 +1403,7 @@ with pies_slot:
                          help=None if len(card_keys) < MAX_COMPARED else f"Up to {MAX_COMPARED} pies: remove one first"):
                 start_editing(new=True)
             if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
+                st.session_state.undo = {"label": "Cleared the comparison.", "kind": "remove", "data": snapshot()}
                 st.session_state.compare = []
                 st.rerun()
         if phone:

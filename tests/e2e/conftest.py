@@ -229,9 +229,8 @@ class App:
         return dialog
 
     def delete_saved(self, name):
-        """Delete a saved pie, confirming in the dialog."""
+        """Delete a saved pie: at once, with Undo on the page."""
         self.saved_row(name).get_by_role("button", name="Delete", exact=True).click()
-        self.page.get_by_test_id("stDialog").get_by_role("button", name="Delete").click()
         self.wait()
 
     def upload(self, path):

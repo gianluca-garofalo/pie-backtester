@@ -228,3 +228,20 @@ def test_an_unfinished_pie_that_cant_join_says_so(app):
         timeout=20_000)
     app.wait()
     assert app.cards() == ["All-World ETF"]
+
+
+def test_remove_can_be_undone(app):
+    for name in ("All-World ETF", "60/40 Stocks & Bonds", "Tech Leaders"):
+        app.load_example(name)
+    before = app.card_keys()
+    colors = [app.card(n).evaluate("e => getComputedStyle(e).borderTopColor") for n in before]
+    app.remove_pie("60/40 Stocks & Bonds")
+    expect(app.page.get_by_text("Removed '60/40 Stocks & Bonds'.")).to_be_visible()
+    app.remove_pie("Tech Leaders")  # the open one: another opens
+    app.click("Undo")  # undoes the last removal
+    assert app.cards() == ["All-World ETF", "Tech Leaders"] and app.editing() == "Tech Leaders"
+    app.remove_pie("All-World ETF")
+    app.click("Undo")
+    assert app.cards() == ["All-World ETF", "Tech Leaders"]
+    assert [app.card(n).evaluate("e => getComputedStyle(e).borderTopColor") for n in app.cards()] == \
+        [colors[0], colors[2]]  # same colours as before

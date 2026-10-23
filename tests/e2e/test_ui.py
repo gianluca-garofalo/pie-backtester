@@ -138,7 +138,7 @@ def test_save_load_delete(app):
     assert app.cards() == ["E2E renamed"]  # the open pie follows the new name
 
     app.delete_saved("E2E renamed")
-    expect(app.page.get_by_text("Deleted pie 'E2E renamed'.")).to_be_visible()
+    expect(app.page.get_by_text("Deleted 'E2E renamed'.")).to_be_visible()
     expect(app.open_my_pies().get_by_role("button", name="E2E renamed", exact=True)).to_have_count(0)
 
 
@@ -520,3 +520,15 @@ def test_no_sidebar(app):
     app.load_example("All-World ETF")
     expect(app.page.get_by_test_id("stSidebar")).to_have_count(0)  # one page, the same on phones
     expect(app.page.get_by_role("button", name=re.compile(r"^My pies \(\d+\)$"))).to_be_visible()
+
+
+def test_delete_can_be_undone(app):
+    app.load_example("All-World ETF")
+    app.save_pie("E2E undo")
+    app.delete_saved("E2E undo")
+    expect(app.page.get_by_text("Deleted 'E2E undo'.")).to_be_visible()
+    expect(app.page.locator(".st-key-status_own")).to_have_text("Not saved yet")
+    app.click("Undo")
+    expect(app.saved_row("E2E undo")).to_have_count(1)  # back in My pies
+    expect(app.page.locator(".st-key-status_own")).to_have_text("Saved")  # and the open pie is saved again
+    app.delete_saved("E2E undo")

@@ -99,17 +99,18 @@ def test_local_storage_keeps_the_guest_account(requests_log):
     assert requests_log == []
 
 
-def test_signed_in_owner_gets_delete_with_a_confirmation(requests_log, monkeypatch):
-    # The owner-scoped delete request itself is tested in test_supabase.py: AppTest can't click inside
-    # a dialog (dialogs rerun on their own), so the confirmed delete is covered by the browser tests.
+def test_signed_in_owner_deletes_at_once_with_undo(requests_log, monkeypatch):
     import auth
 
     own = dict(PUBLIC_PIE, id="p-mine", name="My pie", owner_id="google:123")
     monkeypatch.setattr(storage.requests, "get", lambda url, params=None, **kw: Resp([own]))
+    monkeypatch.setattr(storage.requests, "delete",
+                        lambda url, params=None, **kw: requests_log.append(("delete", params)) or Resp([own]))
     monkeypatch.setattr(auth, "get_current_user",
                         lambda allow_guest=True: {"id": "google:123", "name": "Me", "email": "me@example.com"})
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
-    at.button(key="my_open_p-mine").click().run()
     at.button(key="delete_saved_p-mine").click().run()
-    assert at.button(key="delete_confirm").label == "Delete"  # it asks first
-    assert not any(method == "delete" for method, _ in requests_log)  # nothing deleted yet
+    # no confirmation: deleted straight away, owner-scoped, with Undo instead
+    assert ("delete", {"id": "eq.p-mine", "owner_id": "eq.google:123"}) in requests_log
+    assert at.button(key="undo_button").label == "Undo"
+    assert any("Deleted 'My pie'" in c.value for c in at.caption)
