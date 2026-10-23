@@ -151,6 +151,8 @@ def test_phone_layout(phone):
                               if h.strip()], ["Pie", "Value", "Return", "Per year"])
     box = phone.page.get_by_role("button", name="Remove All-World ETF", exact=True).bounding_box()
     assert box["width"] >= 36 and box["height"] >= 36  # a finger-sized ✕
+    scroller = table.locator(".dvn-scroller").first  # the table's scroll area: no sideways scroll needed
+    assert scroller.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "the columns don't fit"
     phone.page.get_by_role("button", name="Share").click()
     share = phone.page.get_by_test_id("stPopoverBody")
     copy = share.frame_locator("iframe").locator("#b")

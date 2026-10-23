@@ -1015,7 +1015,8 @@ if results:
             st.plotly_chart(fig)
             norm = engine.rebase(res["prices"]).rename(columns=names)
             fig2 = px.line(norm, color_discrete_sequence=PALETTE, title="Each asset, rebased to 100")
-            fig2.update_layout(height=380, hovermode="x unified", legend_title="", yaxis_title="")
+            fig2.update_layout(height=380, hovermode="x unified", legend_title="", yaxis_title="",
+                               legend=dict(orientation="h", y=-0.2) if on_phone() else {})
             st.plotly_chart(fig2)
         with tabs["Holdings"]:
             table = engine.per_asset_table(res, weights, names)
@@ -1082,6 +1083,7 @@ if st.session_state.compare and len(results) > 1:
             "Return %": pct, "CAGR %": pct,
             "Max drawdown %": lambda v: f"{v:.1f}%".replace("-", "−"), "Volatility %": "{:.1f}%"}.items() if k in shown}),
         hide_index=True, width="stretch", column_config={
+            "Pie": st.column_config.TextColumn(width="small" if on_phone() else None),  # so Per year fits
             "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
             "Final value": "Value", "Return %": st.column_config.Column("Return", help="Time-weighted"),
             "CAGR %": st.column_config.Column("Per year", help="CAGR"),
