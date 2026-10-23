@@ -320,6 +320,7 @@ def amount_format(key):
 # Page-wide CSS. Some rules use Streamlit's test ids and st-key classes, so check them after a Streamlit upgrade.
 PAGE_CSS = """<style>
 .st-key-plan_initial button,.st-key-plan_monthly button{display:none}  /* the +/- steppers */
+.st-key-period_pick [role=radiogroup]{flex-wrap:wrap}  /* six presets don't fit a 360 px phone */
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
 .card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

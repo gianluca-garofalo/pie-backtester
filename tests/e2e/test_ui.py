@@ -6,6 +6,7 @@ import urllib.parse
 import pytest
 from playwright.sync_api import expect
 
+from conftest import App
 from storage import list_examples
 
 EXAMPLES = {ex["name"]: ex for ex in list_examples()}
@@ -651,3 +652,33 @@ def test_quick_preset_clicks_end_on_the_last_one(app):
         today = date.today()
         assert date_of(app, "From") == date(today.year - years[clicks[-1]], today.month,
                                             min(today.day, 28) if today.month == 2 else today.day)
+
+
+def contrast(fg, bg):
+    """WCAG contrast of two "rgb(r, g, b)" colours."""
+    def lum(c):
+        r, g, b = (int(x) / 255 for x in re.findall(r"\d+", c)[:3])
+        f = lambda v: v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4  # noqa: E731
+        return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+    hi, lo = sorted((lum(fg), lum(bg)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def test_primary_buttons_are_readable_in_the_dark_theme(browser, app_url):
+    page = browser.new_page(color_scheme="dark", viewport={"width": 1400, "height": 1000})
+    dark = App(page, app_url).open()
+    dark.load_example("All-World ETF")
+    apply = dark.open_plan().get_by_role("button", name="Apply")
+    fg, bg = apply.evaluate("e => [getComputedStyle(e).color, getComputedStyle(e).backgroundColor]")
+    assert contrast(fg, bg) >= 4.5, (fg, bg)  # was 2.18:1
+    page.close()
+
+
+def test_period_presets_fit_a_small_phone(browser, playwright, app_url):
+    device = {k: v for k, v in playwright.devices["iPhone SE"].items() if k != "default_browser_type"}  # 320+ px
+    context = browser.new_context(**dict(device, viewport={"width": 360, "height": 740}))
+    small = App(context.new_page(), app_url).open()
+    for name in ("1Y", "3Y", "5Y", "10Y", "Max", "Custom"):
+        box = small.page.locator(".st-key-period_pick").get_by_role("radio", name=name, exact=True).bounding_box()
+        assert box["x"] >= 0 and box["x"] + box["width"] <= 360, name  # "Custom" was cut to "Cust"
+    context.close()

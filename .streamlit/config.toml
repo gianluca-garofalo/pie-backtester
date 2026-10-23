@@ -6,5 +6,6 @@ primaryColor = "#24364b"
 chartCategoricalColors = ["#0072B2", "#B86E00", "#009E73", "#AA4499", "#56B4E9", "#D55E00"]
 
 [theme.dark]
-primaryColor = "#8fb3d9"
+# dark enough for white text on primary buttons (4.5:1 or more; the pale blue gave 2.18:1)
+primaryColor = "#3d6a99"
 chartCategoricalColors = ["#56B4E9", "#E69F00", "#009E73", "#CC79A7", "#0072B2", "#D55E00"]
