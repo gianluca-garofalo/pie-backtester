@@ -303,3 +303,33 @@ def test_result_rows_line_up_across_five_cards(app):
     for row in ("value", "return", "per_year", "worst_fall"):
         ys = [b["y"] for b in (el.bounding_box() for el in app.page.locator(f"[class*='st-key-val_'][class*='_{row}']").all())]
         assert len(ys) == 5 and max(ys) - min(ys) <= 2, (row, ys)
+
+
+def test_looking_at_a_compared_pie_changes_nothing_until_apply(app):
+    for name in ("All-World ETF", "60/40 Stocks & Bonds", "Tech Leaders"):
+        app.load_example(name)
+    app.remove_pie("All-World ETF")  # Undo is offered
+    app.open_editor("60/40 Stocks & Bonds")  # just to look
+    app.close_editor()
+    assert app.editing() == "Tech Leaders"  # was switched to 60/40 already
+    expect(app.page.get_by_role("button", name="Undo")).to_be_visible()  # and Undo was gone
+    app.card("60/40 Stocks & Bonds").get_by_role("button", name="Save", exact=True).click()
+    expect(app.page.get_by_test_id("stDialog").get_by_label("Pie name")).to_have_value("60/40 Stocks & Bonds")
+    app.page.get_by_test_id("stDialog").get_by_role("button", name="Close").click()
+    app.wait()
+    assert app.editing() == "Tech Leaders"
+    app.open_editor("60/40 Stocks & Bonds")  # editing it for real: it becomes the open pie on Apply
+    app.edit_weight(0, 50, apply=False)
+    app.edit_weight(1, 50)
+    assert app.editing() == "60/40 Stocks & Bonds" and app.cards() == ["60/40 Stocks & Bonds", "Tech Leaders"]
+
+
+def test_a_rename_cant_give_two_pies_one_name(app):
+    app.load_example("All-World ETF")
+    app.load_example("Tech Leaders")
+    editor = app.open_editor()
+    editor.get_by_role("textbox", name="Pie name").fill("All-World ETF")
+    editor.get_by_role("textbox", name="Pie name").press("Enter")
+    app.wait()
+    app.apply()
+    assert app.cards() == ["All-World ETF", "All-World ETF (2)"]  # one card showed the other's numbers

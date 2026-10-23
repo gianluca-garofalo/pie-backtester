@@ -129,9 +129,9 @@ class App:
         return self.page.locator(f".st-key-pie_card_{self.card_keys()[name]}")
 
     def open_pie(self, name):
-        """Make a pie the open one (Edit on its card), then close the editor that comes up."""
+        """Make a pie the open one: Edit on its card, then Apply (closing the editor changes nothing)."""
         self.open_editor(name)
-        self.close_editor()
+        self.apply()
 
     # --- the editor: a dialog; the page changes only on Apply ---
     @property

@@ -653,7 +653,9 @@ def save_open_pie(name, is_public=None):
 
 @st.dialog("Save pie")
 def save_dialog():
-    name = st.text_input("Pie name", value=st.session_state.pie_name, max_chars=storage.MAX_NAME_LENGTH)
+    source = st.session_state.get("save_source")  # a compared pie's Save; None: the open pie
+    name = st.text_input("Pie name", max_chars=storage.MAX_NAME_LENGTH,
+                         value=st.session_state.compare[source]["name"] if source is not None else st.session_state.pie_name)
     same = my_saved_pie(name)
     is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")), help=PUBLIC_HELP)
     if same:
@@ -662,6 +664,9 @@ def save_dialog():
     if st.button("Update pie" if same else "Save pie", type="primary", key="save_confirm",
                  disabled=not name.strip()):
         try:
+            if source is not None:
+                open_compared(source)  # saving works on the open pie
+                st.session_state.save_source = None
             saved, updated = save_open_pie(name, is_pub)
             flash("success", f"{'Updated' if updated else 'Saved'} pie '{md(saved['name'])}'.")
             st.rerun()
@@ -848,6 +853,7 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
                 st.rerun()
     can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
     if st.button("Save", icon=":material/save:", key="save_open", disabled=not can_save,
+                 on_click=lambda: st.session_state.update(save_source=None),
                  help=(f"Save '{md(st.session_state.pie_name)}', the open pie" if can_save else
                        None if not st.session_state.pie else "Sign in to save pies.")):
         save_dialog()
@@ -901,12 +907,20 @@ for _t in {a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])}:
         st.session_state.verified_tickers.add(_t)
 
 
-def start_editing(new=False):
-    """Open the editor on a copy of the open pie (or an empty one): nothing changes until Apply."""
-    st.session_state.draft = [] if new else [
-        {"Ticker": a["Ticker"], "Name": a.get("Name") or a["Ticker"], "Weight %": float(a["Weight %"] or 0),
-         "Lock": bool(a.get("Lock"))} for a in st.session_state.pie]
-    st.session_state.draft_name = "My Pie" if new else st.session_state.pie_name
+def start_editing(new=False, source=None):
+    """Open the editor on a copy of the open pie, of a compared one (source: its index) or an empty one.
+    Nothing changes until Apply, not even which pie is open: closing the editor leaves the page as it was."""
+    if source is not None:
+        e = st.session_state.compare[source]
+        st.session_state.draft = [{"Ticker": t, "Name": e.get("names", {}).get(t, t), "Weight %": float(w),
+                                   "Lock": False} for t, w in e["weights"].items()]
+        st.session_state.draft_name = e["name"]
+    else:
+        st.session_state.draft = [] if new else [
+            {"Ticker": a["Ticker"], "Name": a.get("Name") or a["Ticker"], "Weight %": float(a["Weight %"] or 0),
+             "Lock": bool(a.get("Lock"))} for a in st.session_state.pie]
+        st.session_state.draft_name = "My Pie" if new else st.session_state.pie_name
+    st.session_state.draft_source = source
     st.session_state.draft_new = new
     st.session_state.draft_q = st.session_state.draft_paste = ""
     st.session_state.fix_report = None
@@ -916,6 +930,14 @@ def start_editing(new=False):
     st.rerun()
 
 
+def unused_name(name):
+    """name, or "name (2)", "name (3)"… when a compared pie already has it."""
+    taken, out, n = {e["name"] for e in st.session_state.compare}, name, 2
+    while out in taken:
+        out, n = f"{name} ({n})", n + 1
+    return out
+
+
 def apply_draft():
     """The editor's rows and name become the open pie; a new pie joins the comparison like a loaded one.
     False when there's no room for it."""
@@ -923,9 +945,13 @@ def apply_draft():
     rows = [dict(r) for r in st.session_state.draft]
     st.session_state.pop("undo", None)
     if not st.session_state.draft_new:
-        st.session_state.pie, st.session_state.pie_name = rows, name
+        if st.session_state.get("draft_source") is not None:
+            open_compared(st.session_state.draft_source)  # the compared pie becomes the open one now, on Apply
+        # two pies with one name shared their results and colours (they're keyed by name)
+        st.session_state.pie, st.session_state.pie_name = rows, unused_name(name)
         pie_changed()
         return True
+    name = unused_name(name)
     settings = {k: v for k, v in pie_payload().items() if k in ("currency", "initial", "monthly", "rebalance",
                                                                  "before_listing", "start", "end")}
     ok = load_pie(dict(settings, name=name, assets=[
@@ -974,7 +1000,10 @@ def editor_body():
         st.text_input("Pie name", key="draft_name", max_chars=storage.MAX_NAME_LENGTH)
         # saving updates your saved pie of that name: say so when it's another pie, not this one's saved version
         taken = my_saved_pie(st.session_state.draft_name)
-        own_id = None if st.session_state.draft_new else (st.session_state.saved_ref or {}).get("id")
+        source = st.session_state.get("draft_source")
+        own_ref = None if st.session_state.draft_new else (
+            st.session_state.compare[source].get("saved_ref") if source is not None else st.session_state.saved_ref)
+        own_id = (own_ref or {}).get("id")
         replacing = taken if taken and taken["id"] != own_id else None
         if replacing:
             st.caption(f"You already have a saved pie called '{md(replacing['name'])}'. Save would replace it; "
@@ -1097,7 +1126,10 @@ def editor_body():
                        if float(a["Weight %"] or 0) > 0], key=lambda r: -r[2])
         if live:
             st.markdown("**Allocation**")
-            st.plotly_chart(donut(live, readable(st.session_state.own_color), 300), config={"displayModeBar": False})
+            source = st.session_state.get("draft_source")
+            color = st.session_state.compare[source].get("color") if source is not None else st.session_state.own_color
+            st.plotly_chart(donut(live, readable(color or st.session_state.own_color), 300),
+                            config={"displayModeBar": False})
         if live and storage.adds_up(total) and not bare and not dupes and settings_ok:
             try:
                 res, _, _ = cached_backtest(tuple((t, w) for t, _, w in live), start, end, base_ccy, initial,
@@ -1360,8 +1392,8 @@ def pie_card(k):
             if status != "Saved" and not (shared_storage and not user_id) and st.button(
                     "Save", key=f"save_{k}", type="tertiary", icon=":material/save:",
                     disabled=k != "own" and not own_complete):
-                if k != "own":
-                    open_compared(int(k))  # saving works on the open pie
+                # a compared pie becomes the open one only when it's saved: closing the dialog changes nothing
+                st.session_state.save_source = None if k == "own" else int(k)
                 st.session_state.open_save = True
                 st.rerun()
             st.caption(f"{len(rows)} asset{'' if len(rows) == 1 else 's'}")
@@ -1369,9 +1401,7 @@ def pie_card(k):
             if st.button("Edit", key=f"edit_{k}", disabled=k != "own" and not own_complete,
                          help=None if k == "own" or own_complete else
                          f"Finish '{md(plain_name(OWN))}' first (weights at 100%), then edit this one"):
-                if k != "own":
-                    open_compared(int(k))
-                start_editing()
+                start_editing(source=None if k == "own" else int(k))
             if st.button("Copy", key=f"copy_{k}", disabled=k == "own" and not own_complete,
                          help="Adds a copy to the comparison, so you can change it and compare the two"):
                 add_to_comparison({"name": f"{plain_name(name)} (copy)",

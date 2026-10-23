@@ -577,8 +577,8 @@ def test_undo_doesnt_bring_back_a_duplicate_name(app):
     app.load_example("All-World ETF")
     app.save_pie("E2E again")
     app.delete_saved("E2E again")
-    app.save_pie("E2E again")  # saved once more, as a new pie
-    app.click("Undo")
+    app.save_pie("E2E again")  # saved once more, as a new pie: Undo goes, it would make a second one
+    expect(app.page.get_by_role("button", name="Undo")).to_have_count(0)
     expect(app.saved_row("E2E again")).to_have_count(1)
     app.delete_saved("E2E again")
 
