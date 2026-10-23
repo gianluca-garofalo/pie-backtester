@@ -234,6 +234,24 @@ def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial
     }
 
 
+CURRENCY_SIGNS = {"EUR": "€", "USD": "$", "GBP": "£"}
+
+
+def money(x: float, ccy: str, compact: bool = False) -> str:
+    """€12,345.67, or short when compact (tiles and labels; tables keep full values):
+    €950, €12.3k, €5M, €1.25M, €2.5B."""
+    sign = CURRENCY_SIGNS.get(ccy, "")
+    text = f"{abs(x):,.2f}"
+    if compact:
+        text = f"{abs(x):,.0f}"
+        for size, suffix, decimals in ((1e9, "B", 2), (1e6, "M", 2), (1e3, "k", 1)):
+            if abs(x) >= size:
+                text = f"{abs(x) / size:.{decimals}f}".rstrip("0").rstrip(".") + suffix
+                break
+    text = f"{sign}{text}" if sign else f"{text} {ccy}"
+    return f"−{text}" if x < 0 else text
+
+
 def value_on(earlier: list[dict], day) -> tuple[float, float]:
     """The average value and amount put in of earlier-starting pies on a day.
 

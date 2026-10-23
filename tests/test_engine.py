@@ -146,3 +146,16 @@ def test_value_on_averages_the_earlier_pies():
     value, invested = engine.value_on([a, b], days[2])
     assert (value, invested) == (100.0, 100.0)  # (120 + 80) / 2
     assert engine.value_on([a], pd.Timestamp("2020-01-04"))[0] == 120  # a weekend uses the last trading day
+
+
+@pytest.mark.parametrize("x, text", [
+    (950, "€950"), (12_345, "€12.3k"), (999_000, "€999k"), (5_000_000, "€5M"), (1_254_000, "€1.25M"),
+    (2_500_000_000, "€2.5B"), (-6_300, "−€6.3k"),
+])
+def test_money_compact(x, text):
+    assert engine.money(x, "EUR", compact=True) == text
+
+
+def test_money_full_and_other_currencies():
+    assert engine.money(5_000_000, "EUR") == "€5,000,000.00"
+    assert engine.money(1_500, "SEK", compact=True) == "1.5k SEK"

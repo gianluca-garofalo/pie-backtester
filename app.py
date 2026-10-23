@@ -376,21 +376,12 @@ except Exception:
 active_storage = storage.get_storage(url=supabase_url, key=supabase_key)
 shared_storage = isinstance(active_storage, storage.SupabaseStorageBackend)
 
-CURRENCY_SIGNS = {"EUR": "€", "USD": "$", "GBP": "£"}
 CURRENCY_ICONS = {"EUR": ":material/euro:", "USD": ":material/attach_money:", "GBP": ":material/currency_pound:",
                   "CHF": ":material/currency_franc:"}
 REBALANCE_LABELS = {"Never": "Never", "Monthly": "Month", "Quarterly": "Quarter", "Yearly": "Year"}
 
 
-def money(x, ccy, compact=False):
-    """€12,345.67, or €12.3k when compact (tiles and labels; tables keep full values)."""
-    sign = CURRENCY_SIGNS.get(ccy, "")
-    if compact and abs(x) >= 1000:
-        text = f"{abs(x) / 1000:,.1f}".removesuffix(".0") + "k"
-    else:
-        text = f"{abs(x):,.0f}" if compact else f"{abs(x):,.2f}"
-    text = f"{sign}{text}" if sign else f"{text} {ccy}"
-    return f"−{text}" if x < 0 else text
+money = engine.money
 
 
 @st.dialog("Save pie")
