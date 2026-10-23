@@ -585,7 +585,8 @@ with pies_box:
             target_sp = by_id.get(picked)
             if target_sp and is_mine(target_sp):
                 with st.container(horizontal=True, gap="small"):
-                    if st.button("Edit", key="edit_saved", width="stretch", help="Rename, or make public"):
+                    # no tooltip: it stayed on screen after the dialog closed, over the list
+                    if st.button("Edit", key="edit_saved", width="stretch"):
                         edit_dialog(target_sp)
                     if st.button("Delete", key="delete_saved", width="stretch"):
                         if active_storage.delete_pie(target_sp["id"], user_id=user_id):
