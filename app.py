@@ -132,10 +132,11 @@ def load_pie(cfg):
         pending[key] = min(d, date.today())
     if st.session_state.compare:
         # joining a comparison: keep the settings every compared pie uses, and say what this one had
-        saved_with = [SETTING_WORDS[k](v) for k, v in pending.items() if st.session_state.get(k) != v]
-        if saved_with:
-            flash("toast", f"Kept your settings. '{md(st.session_state.pie_name)}' was saved with "
-                           f"{', '.join(saved_with)}.")
+        # "EUR, not its own USD": what's in use, then what the pie was saved with
+        differ = [f"{SETTING_WORDS[k](st.session_state[k])}, not its own {SETTING_WORDS[k](v)}"
+                  for k, v in pending.items() if k in st.session_state and st.session_state[k] != v]
+        if differ:
+            flash("toast", f"'{md(st.session_state.pie_name)}' uses the comparison's settings: {md('; '.join(differ))}.")
     else:
         st.session_state.pending_settings = pending
     pie_changed()
