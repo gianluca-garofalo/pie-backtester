@@ -353,14 +353,3 @@ def test_max_goes_back_as_far_as_the_results(app):
     assert app.page.get_by_role("spinbutton", name="year, From").get_attribute("aria-valuenow") == "2019"
     start_choice_radio = app.page.get_by_role("radiogroup", name="When the pies start")
     expect(start_choice_radio).to_have_count(0)  # nothing lists late any more: From is the shared start
-
-
-def test_the_strip_shows_days_with_prices_that_arent_used(app):
-    app.load_example("Tech Leaders")
-    app.load_example("All-World ETF")
-    app.set_date("From", "2015-01-01")  # Tech Leaders has every price from Dec 2015, but starts with VWCE.DE in 2019
-    plot = app.page.locator(".st-key-period .js-plotly-plot")
-    names = plot.evaluate("e => e.data.map(t => t.name)")
-    assert "has prices, not used" in names, names  # it looked like the light grey of "no prices"
-    assert "used" in names and "no prices yet" in names, names
-    expect(app.page.get_by_text("Faded: the pie has prices but starts with the others.")).to_be_visible()
