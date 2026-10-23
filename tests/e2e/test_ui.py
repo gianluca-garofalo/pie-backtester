@@ -145,13 +145,21 @@ def test_share_link_restores_pie_and_settings(app):
     app.set_number("Initial", 4321)
     app.page.get_by_role("button", name="Share").click()
     link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
-    assert link.startswith(app.url) and "?pie=" in link
+    assert link.startswith(app.url)
+    assert link.split("?", 1)[1] == "p=Tech+Leaders~USD~2020-01-01~~4321~100~Q~w~QDVE.DE:50,AAPL:25,MSFT:25"
 
     app.page.goto(link)
     app.wait()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
+    assert app.rows()[1][2] == "Apple Inc."  # names left out of the link are looked up again
     expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("USD")
     expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("4321")
+
+
+def test_older_long_share_links_still_open(app):
+    import sharing
+    app.open("?pie=" + sharing.encode_pie_to_query_param(EXAMPLES["60/40 Stocks & Bonds"]))
+    assert app.tickers() == [a["ticker"] for a in EXAMPLES["60/40 Stocks & Bonds"]["assets"]]
 
 
 def test_broken_share_link_says_so(app):

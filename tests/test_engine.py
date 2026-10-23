@@ -129,3 +129,11 @@ def test_per_asset_gains_add_up_to_the_pies_gain():
     assert table.set_index("Ticker").loc["UP", "Gain"] > 0 > table.set_index("Ticker").loc["DOWN", "Gain"]
     assert table["Drift"].tolist() == pytest.approx((table["Current %"] - table["Target %"]).tolist())
     assert len(table.loc[0, "History"]) > 1
+
+
+def test_asset_name_takes_the_exact_listing(monkeypatch):
+    monkeypatch.setattr(engine, "search_assets", lambda q, n=10: [
+        {"symbol": "AAPL.TO", "name": "Apple CDR"}, {"symbol": "AAPL", "name": "Apple Inc."}])
+    assert engine.asset_name("aapl") == "Apple Inc."
+    monkeypatch.setattr(engine, "search_assets", lambda q, n=10: [])
+    assert engine.asset_name("ZZZZ") == "ZZZZ"  # no match: the ticker stands in for the name

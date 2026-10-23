@@ -189,13 +189,16 @@ SIDEBAR_CSS = """<style>
 </style>"""
 
 
-# Check for share link in query params on initial load
+# Check for share link in query params on initial load: ?p= (short) or ?pie= (older links)
 if "loaded_query_pie" not in st.session_state:
     st.session_state.loaded_query_pie = True
-    qp_pie = st.query_params.get("pie")
-    if qp_pie:
-        decoded = sharing.decode_pie_from_query_param(qp_pie)
+    qp_short, qp_pie = st.query_params.get("p"), st.query_params.get("pie")
+    if qp_short or qp_pie:
+        decoded = sharing.decode_share_link(qp_short) if qp_short else sharing.decode_pie_from_query_param(qp_pie)
         if decoded:
+            for a in decoded["assets"]:
+                if a["name"] == a["ticker"]:  # short links leave names out
+                    a["name"] = engine.asset_name(a["ticker"])
             load_pie(decoded)
         else:
             flash("error", "This share link is invalid or damaged, so no pie was loaded.")
@@ -498,11 +501,11 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
         try:
             if not pie_data_raw:
                 raise ValueError("build a pie first")
-            encoded_param = sharing.encode_pie_to_query_param(pie_data_raw)
+            encoded_param = sharing.encode_share_link(pie_data_raw)
             if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
                 st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
             else:
-                st.code(f"{st.context.url or ''}?pie={encoded_param}", language=None, wrap_lines=True)
+                st.code(f"{st.context.url or ''}?p={encoded_param}", language=None, wrap_lines=True)
                 st.caption("Copy this link to share your pie and its settings.")
         except Exception as e:
             st.caption(f"Cannot generate share link: {e}")

@@ -30,6 +30,12 @@ def search_assets(query: str, max_results: int = 10) -> list[dict]:
     return out
 
 
+def asset_name(ticker: str) -> str:
+    """The listing's name on Yahoo, for pies that arrive without names (short share links)."""
+    hits = [h for h in search_assets(ticker, 5) if (h["symbol"] or "").upper() == ticker.upper()]
+    return hits[0]["name"] if hits and hits[0]["name"] else ticker
+
+
 # Preferred Yahoo exchange suffixes when a ticker comes without one (e.g. from Trading 212).
 EXCHANGE_PREFERENCE = {
     "EUR": [".DE", ".AS", ".PA", ".MI", ".L", ".SW"],
