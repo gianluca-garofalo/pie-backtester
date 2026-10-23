@@ -276,11 +276,12 @@ CURRENCY_SIGNS = {"EUR": "€", "USD": "$", "GBP": "£"}
 
 def money(x: float, ccy: str, compact: bool = False) -> str:
     """€12,345.67, or short when compact (tiles and labels; tables keep full values):
-    €950, €12.3k, €5M, €1.25M, €2.5B."""
+    €950, €0.50, €12.3k, €5M, €1.25M, €2.5B."""
     sign = CURRENCY_SIGNS.get(ccy, "")
     text = f"{abs(x):,.2f}"
     if compact:
-        text = f"{abs(x):,.0f}"
+        # under 1,000 cents show when there are any: a €0.50 deposit isn't "€0"
+        text = f"{abs(x):,.0f}" if round(abs(x), 2) == round(abs(x)) else f"{abs(x):,.2f}"
         for size, suffix, decimals in ((1e9, "B", 2), (1e6, "M", 2), (1e3, "k", 1)):
             if abs(x) >= size:
                 text = f"{abs(x) / size:.{decimals}f}".rstrip("0").rstrip(".") + suffix
