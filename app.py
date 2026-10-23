@@ -121,6 +121,7 @@ def load_pie(cfg):
     already = next((e for e in st.session_state.compare if e["weights"] == loaded), None)
     st.session_state.compare = others
     st.session_state.pop("undo", None)  # Undo is for the last change only
+    st.session_state.pop("plan_note", None)  # about the pie loaded before
     if moving:
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
@@ -161,11 +162,11 @@ def load_pie(cfg):
     if st.session_state.compare:
         # joining a comparison: keep the settings every compared pie uses, and say what this one had
         # "EUR, not its own USD": what's in use, then what the pie was saved with
-        differ = [f"{SETTING_WORDS[k](st.session_state[k])}, not its own {SETTING_WORDS[k](v)}"
-                  for k, v in pending.items()
-                  if k in SETTING_WORDS and SETTING_WORDS[k](st.session_state[k]) != SETTING_WORDS[k](v)]
-        if differ:
-            flash("toast", f"'{md(st.session_state.pie_name)}' uses the comparison's settings: {md('; '.join(differ))}.")
+        # said in the Plan bar, where the settings are; a toast covered the header buttons and soon went
+        own = [SETTING_WORDS[k](v) for k, v in pending.items()
+               if k in SETTING_WORDS and SETTING_WORDS[k](st.session_state[k]) != SETTING_WORDS[k](v)]
+        if own:
+            st.session_state.plan_note = f"'{st.session_state.pie_name}' uses this plan, not its own: {', '.join(own)}."
     else:
         st.session_state.pending_settings = pending
     pie_changed()
@@ -317,11 +318,17 @@ def amount_format(key):
     return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
 
 
-# Page-wide CSS. Some rules use Streamlit's test ids and st-key classes, so check them after a Streamlit upgrade.
+# Page-wide CSS, repeated inside the editor dialog: while the dialog reruns on its own, the page's style
+# element stopped applying (toasts went back to the top). Some rules use Streamlit's test ids and st-key classes, so check them after a Streamlit upgrade.
 PAGE_CSS = """<style>
 .st-key-plan_initial button,.st-key-plan_monthly button{display:none}  /* the +/- steppers */
 .st-key-period_pick [role=radiogroup]{flex-wrap:wrap}  /* six presets don't fit a 360 px phone */
 @media (pointer:coarse){.st-key-draft_paste [data-testid=InputInstructions]{display:none}}  /* no Ctrl+Enter there */
+/* toasts at the bottom: at the top they covered Examples, Save and Share */
+[data-testid=stToastContainer]{top:auto !important;bottom:1rem !important}
+/* busy cue: results and cards dim while the app recalculates; delayed, so quick reruns don't flicker */
+[data-testid=stApp][data-test-script-state=running] :is(.st-key-results,[class*='st-key-pie_card_']){
+  opacity:.5;transition:opacity .2s .6s}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
 .card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -862,6 +869,8 @@ with st.container(border=True, key="plan", horizontal=True, vertical_alignment="
         f"{plan_amount(initial)} to start · "
         + (f"{plan_amount(monthly)} every month" if monthly else "no monthly deposits")
         + f" · {base_ccy} · rebalance {rebalance.lower()}"), width="stretch")
+    if "plan_note" in st.session_state and st.session_state.compare:
+        st.caption(md(st.session_state.plan_note), width="stretch")
     if st.button("Edit plan"):
         for k in ("initial", "monthly", "rebalance"):
             st.session_state[f"plan_{k}"] = st.session_state[k]
@@ -940,6 +949,7 @@ def editor_footer(draft, total, bare, dupes, replacing):
 def editor_body():
     """Search, the table (weights and locks), Scale and Split, a pasted list, and a preview. It reruns on its
     own; the page only changes on Apply."""
+    st.html(PAGE_CSS)
     if st.session_state.get("draft_base_version") != st.session_state.draft_version:
         # a snapshot, changed only by code: passing the live rows makes Streamlit drop the next edit
         st.session_state.draft_base = pd.DataFrame(st.session_state.draft,
@@ -1454,9 +1464,10 @@ def card_css():
 
 with pies_slot:
     if "undo" in st.session_state:  # what the last Remove or Delete did, and a way back
-        with st.container(horizontal=True, vertical_alignment="center", key="undo_note"):
-            st.caption(md(st.session_state.undo["label"]), width="content")
-            if st.button("Undo", key="undo_button", type="tertiary"):
+        with st.container(horizontal=True, vertical_alignment="center", key="undo_note", border=True):
+            # role=status: screen readers announce it
+            st.html(f'<div role="status">{html.escape(st.session_state.undo["label"])}</div>', width="content")
+            if st.button("Undo", key="undo_button"):
                 undo_last()
                 st.rerun()
     if not card_keys:

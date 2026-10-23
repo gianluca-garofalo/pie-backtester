@@ -164,13 +164,10 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
 
 def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
     app.load_example("All-World ETF")  # EUR, never rebalanced
-    app.page.get_by_role("button", name="Examples").click()
-    app.page.get_by_test_id("stPopoverBody").get_by_role("button", name="Tech Leaders", exact=True).click()
-    # saved with USD and quarterly rebalancing; the note is a toast, gone after a few seconds, so look right away
-    expect(app.page.get_by_text("'Tech Leaders' uses the comparison's settings: EUR, not its own USD")).to_be_visible(
-        timeout=20_000)
-    app.wait()
+    app.load_example("Tech Leaders")  # saved with USD and quarterly rebalancing
+    # said in the Plan bar, where the settings are, and it stays; a toast covered the header buttons
     expect(app.plan).to_contain_text("EUR · rebalance never")
+    expect(app.plan).to_contain_text("'Tech Leaders' uses this plan, not its own: USD, rebalance quarterly")
 
 
 def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):

@@ -712,3 +712,30 @@ def test_the_editor_on_a_phone(phone):
     editor.get_by_text("Paste a list").click()
     editor.get_by_role("textbox", name="One ticker and weight per line").click()
     expect(editor.get_by_text("Ctrl+Enter")).to_have_count(0)  # no keyboard shortcut hint on a touch screen
+
+
+def test_toasts_dont_cover_the_header_buttons(app):
+    app.load_example("Tech Leaders")
+    app.search_add("NVDA")  # "Added NVDA." comes as a toast
+    toast = app.page.get_by_test_id("stToast").first
+    expect(toast).to_be_visible()
+    t, b = toast.bounding_box(), app.page.get_by_role("button", name="Share").bounding_box()
+    assert t["y"] > b["y"] + b["height"] or t["x"] + t["width"] < b["x"], (t, b)
+
+
+def test_results_dim_while_the_app_is_busy(app):
+    app.load_example("All-World ETF")
+    dimmed = app.page.evaluate("""() => {
+        const app = document.querySelector('[data-testid=stApp]');
+        app.setAttribute('data-test-script-state', 'running');
+        const r = document.querySelector('.st-key-results');
+        return getComputedStyle(r).transitionDelay;
+    }""")
+    assert dimmed and dimmed != "0s"  # a busy cue, delayed so quick reruns don't flicker
+
+
+def test_the_undo_note_is_announced(app):
+    app.load_example("All-World ETF")
+    app.load_example("Tech Leaders")
+    app.remove_pie("All-World ETF")
+    expect(app.page.locator(".st-key-undo_note [role=status]")).to_contain_text("Removed 'All-World ETF'.")

@@ -113,4 +113,4 @@ def test_signed_in_owner_deletes_at_once_with_undo(requests_log, monkeypatch):
     # no confirmation: deleted straight away, owner-scoped, with Undo instead
     assert ("delete", {"id": "eq.p-mine", "owner_id": "eq.google:123"}) in requests_log
     assert at.button(key="undo_button").label == "Undo"
-    assert any("Deleted 'My pie'" in c.value for c in at.caption)
+    assert at.session_state.undo["label"] == "Deleted 'My pie'."  # shown in the Undo note
