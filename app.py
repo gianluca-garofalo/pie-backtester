@@ -244,6 +244,11 @@ def money_column(ccy):
     return {"EUR": "euro", "USD": "dollar"}.get(ccy, "localized")
 
 
+def signed_pct(v):
+    """+12.3% or −4.5%, with a real minus sign like the rest of the app (not a hyphen)."""
+    return f"{v:+.1f}%".replace("-", "−")
+
+
 def amount_format(key):
     """Number format for an amount field: "1000", or "10.12" once it has cents."""
     return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
@@ -928,13 +933,13 @@ if results:
             st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
                       delta=f"{money(res['invested'].iloc[0], ccy, True)} + {deposits} deposits",
                       delta_color="off", delta_arrow="off")
-            st.metric("Return", f"{m['twr_total'] * 100:+.1f}%", border=True, height="stretch",
+            st.metric("Return", signed_pct(m['twr_total'] * 100), border=True, height="stretch",
                       delta="the pie's own growth", delta_color="off", delta_arrow="off",
                       help="How the pie itself grew, as if all the money had been in from the start (time-weighted). "
                            "It's higher or lower than the gain on money put in, under Value now, because money "
                            "added later had less time to grow or fall.")
             short = pd.isna(m["cagr"])
-            st.metric("Per year", "n/a" if short else f"{m['cagr'] * 100:+.1f}%", border=True, height="stretch",
+            st.metric("Per year", "n/a" if short else signed_pct(m['cagr'] * 100), border=True, height="stretch",
                       delta="needs a year of data" if short else "on average", delta_color="off", delta_arrow="off",
                       help="The steady yearly growth that gives the same Return (compound annual growth rate, CAGR).")
             st.metric("Worst fall", f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"), border=True, height="stretch",
@@ -1062,6 +1067,9 @@ elif st.session_state.pie and not own_ready:
 if st.session_state.compare and len(results) > 1:
     st.subheader("Compared pies")
     table = engine.comparison_table(results)
+    # rows in the same order as the chips
+    place = {OWN: st.session_state.own_order} | {e["name"]: e.get("order", 0) for e in st.session_state.compare}
+    table = table.sort_values("Pie", key=lambda col: col.map(place), kind="stable").reset_index(drop=True)
     same_invested = table["Invested"].round(2).nunique() == 1
     shown = table[(["Pie", "Final value", "Return %", "CAGR %"] if on_phone() else  # what fits on a phone
                    ["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"])
@@ -1084,7 +1092,7 @@ if st.session_state.compare and len(results) > 1:
         css["Pie"] = [f"color: {c}; font-weight: 600" for c in row_colors]
         return css
 
-    pct = lambda v: "—" if pd.isna(v) else f"{v:+.1f}%"  # noqa: E731
+    pct = lambda v: "—" if pd.isna(v) else signed_pct(v)  # noqa: E731
     st.dataframe(
         shown.style.apply(emphasis, axis=None).format({k: f for k, f in {
             "Final value": lambda v: money(v, base_ccy), "Invested": lambda v: money(v, base_ccy),

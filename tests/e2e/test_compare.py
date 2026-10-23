@@ -14,7 +14,7 @@ def test_loading_another_pie_keeps_the_previous_one(app):
     app.load_example("60/40 Stocks & Bonds")
     assert app.chips() == ["All-World ETF", "60/40 Stocks & Bonds (editing)"]  # in the order they were loaded
     expect(app.page.get_by_test_id("stAlert")).to_have_count(0)  # no banner about it
-    assert [r[0] for r in comparison_rows(app)] == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
+    assert [r[0] for r in comparison_rows(app)] == ["All-World ETF", "60/40 Stocks & Bonds (editing)"]  # chip order
     assert app.metrics()  # tiles are for the pie being edited
 
     app.remove_pie("All-World ETF")
