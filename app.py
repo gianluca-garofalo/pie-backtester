@@ -16,6 +16,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
+import editing
 import engine
 import storage
 import sharing
@@ -209,17 +210,6 @@ def open_compared(i):
     pie_changed()
 
 
-def scale_to_100():
-    """Keep the proportions, make the weights add up to exactly 100%."""
-    total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
-    for a in st.session_state.pie:
-        a["Weight %"] = round(float(a["Weight %"] or 0) * 100 / total, 2)
-    biggest = max(st.session_state.pie, key=lambda a: a["Weight %"])
-    biggest["Weight %"] = round(biggest["Weight %"] + 100 - sum(a["Weight %"] for a in st.session_state.pie), 2)
-    flash("toast", f"Scaled the weights from {total:.2f}% to 100%.")
-    pie_changed()
-
-
 def readable(color):
     """A pie colour as shown on the page. On the dark theme it's lightened until it has 4.5:1 contrast on
     the dark background (the blue was 3.7:1); the light theme shows it as it is."""
@@ -353,34 +343,46 @@ for _key, _value in st.session_state.pop("pending_settings", {}).items():
     st.session_state[_key] = _value
 
 
-def add_asset(symbol: str, name: str):
-    if any(a["Ticker"] == symbol for a in st.session_state.pie):
-        flash("toast", f"{md(symbol)} is already in the pie.")  # a plain toast is lost in the rerun that follows
-        return False
+def draft_changed():
+    """Call after changing st.session_state.draft from code (not from the editor's table)."""
+    st.session_state.draft_version = st.session_state.get("draft_version", 0) + 1
+
+
+def add_to_draft(symbol, name):
+    """"Add to pie" in the editor. The search box isn't cleared: clearing it during the rerun could wipe what
+    someone starts typing next. The button turns into "Added ✓" instead, and a toast confirms."""
+    if any(a["Ticker"] == symbol for a in st.session_state.draft):
+        st.toast(f"{md(symbol)} is already in the pie.")
+        return
     # it came from search, so Yahoo knows it as-is: ASML on NASDAQ is a real listing, even though a
     # euro pie's suffix check would prefer ASML.AS
     st.session_state.verified_tickers.add(symbol)
     # the new asset gets what's left to reach 100%, so the weights already set stay as they are
-    total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
-    st.session_state.pie.append({"Ticker": symbol, "Name": name, "Weight %": round(max(100.0 - total, 0.0), 2)})
-    pie_changed()
-    return True
+    st.session_state.draft = editing.with_added(st.session_state.draft, symbol, name)
+    draft_changed()
+    st.toast(f"Added {md(symbol)}.")
 
 
-def add_from_search(symbol, name):
-    """"Add to pie". The search box isn't cleared: clearing it during the rerun could wipe what someone
-    starts typing next. The button turns into "Added ✓" instead, and a toast confirms."""
-    if add_asset(symbol, name):
-        flash("toast", f"Added {md(symbol)}.")
+def change_draft(operation):
+    """Scale to 100% or Split evenly on the editor's rows; locked rows keep their weight."""
+    st.session_state.draft = operation(st.session_state.draft)
+    draft_changed()
 
 
-def split_evenly():
-    n = len(st.session_state.pie)
-    if n:
-        base = round(100 / n, 2)
-        for a in st.session_state.pie:
-            a["Weight %"] = base
-        st.session_state.pie[-1]["Weight %"] = round(100 - base * (n - 1), 2)
+def paste_rows(found, replace):
+    """Pasted (symbol, name, weight) rows replace the editor's rows, or are added to them (a ticker that's
+    already there gets the pasted weight)."""
+    rows = [] if replace else [dict(r) for r in st.session_state.draft]
+    for symbol, name, weight in found:
+        st.session_state.verified_tickers.add(symbol)
+        same = next((r for r in rows if r["Ticker"] == symbol), None)
+        if same:
+            same["Weight %"] = weight
+        else:
+            rows.append({"Ticker": symbol, "Name": name, "Weight %": weight, "Lock": False})
+    st.session_state.draft = rows
+    st.session_state.draft_paste = ""
+    draft_changed()
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -398,10 +400,21 @@ def is_bare(ticker):
     return engine.needs_suffix(ticker) and ticker not in st.session_state.verified_tickers
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def find_listing(ticker, ccy):
+    """The Yahoo listing for a pasted ticker, (symbol, name), or None: the exact symbol first (VWCE.DE, AAPL),
+    then a bare ticker's usual European listing (VWRA -> VWRA.L)."""
+    exact = [h for h in engine.search_assets(ticker, 10) if (h["symbol"] or "").upper() == ticker]
+    if exact:
+        return exact[0]["symbol"], exact[0]["name"] or ticker
+    hits = engine.resolve_ticker(ticker, ccy) if engine.needs_suffix(ticker) else []
+    return (hits[0]["symbol"], hits[0]["name"] or hits[0]["symbol"]) if hits else None
+
+
 def fix_tickers(ccy):
-    """Add exchange suffixes to bare tickers, e.g. Trading 212's VWRA -> VWRA.L."""
+    """Add exchange suffixes to the editor's bare tickers, e.g. Trading 212's VWRA -> VWRA.L."""
     changed, unresolved = [], []
-    for a in st.session_state.pie:
+    for a in st.session_state.draft:
         t = str(a["Ticker"]).strip().upper()
         if not is_bare(t):
             continue
@@ -417,7 +430,7 @@ def fix_tickers(ccy):
                         [h["symbol"] for h in hits[1:4]]))
         a["Ticker"], a["Name"] = best["symbol"], best["name"] or best["symbol"]
     st.session_state.fix_report = (changed, unresolved)
-    pie_changed()
+    draft_changed()
 
 
 EARLIEST = date(1970, 1, 1)  # the earliest start the sidebar allows
@@ -572,13 +585,32 @@ money = engine.money
 PUBLIC_HELP = "Public pies are listed for everyone who opens the app, signed in or not."  # Save and Edit say the same
 
 
+def my_saved_pie(name):
+    """Your saved pie with this name, if any: saving under it updates that pie instead of adding a copy."""
+    mine = [p for p in active_storage.list_pies(user_id=user_id)
+            if not shared_storage or p.get("owner_id") == user_id]
+    return next((p for p in mine if storage.same_name(p["name"], name)), None)
+
+
+def save_open_pie(name, is_public=None):
+    """Save the open pie as `name`, updating your saved pie of that name. is_public None keeps that pie's
+    setting (private for a new one). Returns (saved pie, whether it updated one)."""
+    same = my_saved_pie(name)
+    payload = dict(pie_payload(name.strip()),
+                   is_public=bool(same and same.get("is_public")) if is_public is None else is_public)
+    if same:
+        saved = active_storage.overwrite_pie(same["id"], payload, user_id=user_id)
+    else:
+        saved = active_storage.save_pie(payload, user_id=user_id)
+    st.session_state.pie_name = saved["name"]
+    st.session_state.saved_ref = saved_ref_of(saved)
+    return saved, bool(same)
+
+
 @st.dialog("Save pie")
 def save_dialog():
     name = st.text_input("Pie name", value=st.session_state.pie_name, max_chars=storage.MAX_NAME_LENGTH)
-    # saving under the name of one of your saved pies updates it instead of adding a copy
-    mine = [p for p in active_storage.list_pies(user_id=user_id)
-            if not shared_storage or p.get("owner_id") == user_id]
-    same = next((p for p in mine if storage.same_name(p["name"], name)), None)
+    same = my_saved_pie(name)
     is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")), help=PUBLIC_HELP)
     if same:
         st.caption(f"You already have a saved pie called '{md(same['name'])}'. Saving updates it. "
@@ -586,14 +618,8 @@ def save_dialog():
     if st.button("Update pie" if same else "Save pie", type="primary", key="save_confirm",
                  disabled=not name.strip()):
         try:
-            payload = dict(pie_payload(name.strip()), is_public=is_pub)
-            if same:
-                saved = active_storage.overwrite_pie(same["id"], payload, user_id=user_id)
-            else:
-                saved = active_storage.save_pie(payload, user_id=user_id)
-            st.session_state.pie_name = saved["name"]
-            st.session_state.saved_ref = saved_ref_of(saved)
-            flash("success", f"{'Updated' if same else 'Saved'} pie '{md(saved['name'])}'.")
+            saved, updated = save_open_pie(name, is_pub)
+            flash("success", f"{'Updated' if updated else 'Saved'} pie '{md(saved['name'])}'.")
             st.rerun()
         except Exception as ex:
             st.error(f"Failed to save pie: {ex}")
@@ -804,12 +830,58 @@ with st.container(border=True, key="plan", horizontal=True, vertical_alignment="
 
 pies_slot = st.container()  # the pie cards; filled after the table and the results, so they show this run's
 
-# ---------------- your pie: search, table, total and the allocation donut ----------------
-with st.container(border=True):
+# ---------------- the open pie: changed only in the editor dialog ----------------
+total_w = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
+for _t in {a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])}:
+    _hits = cached_resolve(_t, base_ccy)
+    if _hits and _hits[0]["symbol"].upper() == _t:  # a real listing without suffix, e.g. a US stock
+        st.session_state.verified_tickers.add(_t)
+
+
+def start_editing(new=False):
+    """Open the editor on a copy of the open pie (or an empty one): nothing changes until Apply."""
+    st.session_state.draft = [] if new else [
+        {"Ticker": a["Ticker"], "Name": a.get("Name") or a["Ticker"], "Weight %": float(a["Weight %"] or 0),
+         "Lock": bool(a.get("Lock"))} for a in st.session_state.pie]
+    st.session_state.draft_name = "My Pie" if new else st.session_state.pie_name
+    st.session_state.draft_new = new
+    st.session_state.draft_q = st.session_state.draft_paste = ""
+    st.session_state.fix_report = None
+    draft_changed()
+    st.session_state.open_editor = True  # the dialog opens on the next run, over the updated page
+    st.rerun()
+
+
+def apply_draft():
+    """The editor's rows and name become the open pie; a new pie joins the comparison like a loaded one.
+    False when there's no room for it."""
+    name = storage.clean_name(st.session_state.draft_name) or "My Pie"
+    rows = [dict(r) for r in st.session_state.draft]
+    if not st.session_state.draft_new:
+        st.session_state.pie, st.session_state.pie_name = rows, name
+        pie_changed()
+        return True
+    settings = {k: v for k, v in pie_payload().items() if k in ("currency", "initial", "monthly", "rebalance",
+                                                                 "before_listing", "start", "end")}
+    ok = load_pie(dict(settings, name=name, assets=[
+        {"ticker": r["Ticker"], "weight": float(r["Weight %"] or 0), "name": r["Name"] or r["Ticker"]} for r in rows]))
+    st.session_state.get("pending_settings", {}).pop("period", None)  # same dates: the period preset stays
+    return ok
+
+
+def editor_body():
+    """Search, the table (weights and locks), Scale and Split, a pasted list, and a preview. It reruns on its
+    own; the page only changes on Apply."""
+    if st.session_state.get("draft_base_version") != st.session_state.draft_version:
+        # a snapshot, changed only by code: passing the live rows makes Streamlit drop the next edit
+        st.session_state.draft_base = pd.DataFrame(st.session_state.draft,
+                                                   columns=["Ticker", "Weight %", "Lock", "Name"]).astype({"Lock": bool})
+        st.session_state.draft_base_version = st.session_state.draft_version
     left, right = st.columns([3, 2], gap="large")
     with left:
-        # assets come only from search, so every ticker is a real Yahoo listing
-        q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed", key="search_q",
+        st.text_input("Pie name", key="draft_name", max_chars=storage.MAX_NAME_LENGTH)
+        # assets come only from search (or a checked pasted list), so every ticker is a real Yahoo listing
+        q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed", key="draft_q",
                           placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL").strip()
         if q:
             hits = cached_search(q)
@@ -820,73 +892,56 @@ with st.container(border=True):
                 labels = [f"{h['symbol']} — {h['name']} · {h['exchange']} · {h['currency']}"
                           + ("" if h["type"] in ("ETF", "EQUITY") else f" · {h['type'].lower()}") for h in hits]
                 choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
-                # a callback with the listing bound now: a click that lands while the page is still redrawing
-                # adds exactly what was shown, instead of whatever the next rerun's results are
-                added = any(a["Ticker"] == hits[choice]["symbol"] for a in st.session_state.pie)
+                # a callback with the listing bound now: a click that lands while the dialog is still redrawing
+                # adds exactly what was shown
+                added = any(a["Ticker"] == hits[choice]["symbol"] for a in st.session_state.draft)
                 st.button("Added ✓" if added else "Add to pie", type="primary", disabled=added,
-                          on_click=add_from_search, args=(hits[choice]["symbol"], hits[choice]["name"]))
-
-        if not st.session_state.pie:
-            st.info("Your pie is empty. Pick one from Examples at the top, or search for an asset.")
-            total_w = 0.0
-        else:
-            # The table starts from a snapshot taken when the pie was last changed by code. Passing the
-            # live pie instead would change the table's input after every edit, and Streamlit then
-            # drops the next edit (it came back on the second try).
-            if st.session_state.get("editor_base_version") != st.session_state.editor_version:
-                st.session_state.editor_base = pd.DataFrame(st.session_state.pie,
-                                                            columns=["Ticker", "Name", "Weight %"])
-                st.session_state.editor_base_version = st.session_state.editor_version
+                          on_click=add_to_draft, args=(hits[choice]["symbol"], hits[choice]["name"]))
+        if st.session_state.draft:
             edited = st.data_editor(
-                st.session_state.editor_base,
+                st.session_state.draft_base,
                 # "delete": rows can be removed but not typed in, and clicking a column name sorts the view
                 num_rows="delete", disabled=["Ticker"], width="stretch", hide_index=True,
                 # weights first and narrow, so long ETF names can't push them out of view
-                column_order=["Ticker", "Weight %", "Name"],
+                column_order=["Ticker", "Weight %", "Lock", "Name"],
                 column_config={
                     "Ticker": st.column_config.TextColumn(width="small", help="Yahoo symbol. Add assets with the search above."),
                     "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.01,
                                                               format="%.2f", width="small"),
+                    "Lock": st.column_config.CheckboxColumn(
+                        width="small", help="Scale to 100% and Split evenly leave a locked weight as it is"),
                     "Name": st.column_config.TextColumn(width="large"),
                 },
-                key=f"pie_editor_{st.session_state.editor_version}",
+                key=f"draft_editor_{st.session_state.draft_version}",
             )
-            rows = edited.dropna(subset=["Ticker"]).fillna({"Weight %": 0.0, "Name": ""})
+            rows = edited.dropna(subset=["Ticker"]).fillna({"Weight %": 0.0, "Name": "", "Lock": False})
             rows["Ticker"] = rows["Ticker"].astype(str).str.strip().str.upper()
-            st.session_state.pie = rows[rows["Ticker"] != ""].to_dict("records")
-            total_w = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
-
-            for t in {a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])}:
-                hits = cached_resolve(t, base_ccy)
-                if hits and hits[0]["symbol"].upper() == t:
-                    st.session_state.verified_tickers.add(t)
-            bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
-
-            # the live total says why results are missing, before anyone looks for them
-            if storage.adds_up(total_w):
+            st.session_state.draft = rows[rows["Ticker"] != ""].to_dict("records")
+        else:
+            st.caption("Search above to add assets, or paste a list below.")
+        draft = st.session_state.draft
+        total = sum(float(a["Weight %"] or 0) for a in draft)
+        bare = [a["Ticker"] for a in draft if is_bare(a["Ticker"])]
+        named = [a["Ticker"] for a in draft]
+        dupes = sorted({t for t in named if named.count(t) > 1})
+        if draft:
+            # the live total says why results would be missing
+            if storage.adds_up(total):
                 st.markdown(":green[**Total 100% ✓**]")
-            elif total_w < 100:
-                st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]")
+            elif total < 100:
+                st.markdown(f":orange[**Total {total:.2f}% · {100 - total:.2f}% left**]")
             else:
-                st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]")
+                st.markdown(f":orange[**Total {total:.2f}% · {total - 100:.2f}% too much**]")
             with st.container(horizontal=True, vertical_alignment="center"):
                 if bare and st.button("Fix tickers", type="primary",
                                       help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):
                     with st.spinner("Looking up tickers…"):
                         fix_tickers(base_ccy)
-                    st.rerun()
-                if st.button("Split evenly"):
-                    split_evenly()
-                    pie_changed()
-                    st.rerun()
-                if st.button("Scale to 100%", disabled=storage.adds_up(total_w) or total_w == 0):
-                    scale_to_100()
-                    st.rerun()
-                if st.button("Clear pie"):
-                    st.session_state.pie, st.session_state.fix_report = [], None
-                    pie_changed()
-                    st.rerun()
-
+                    st.rerun(scope="fragment")
+                st.button("Scale to 100%", disabled=storage.adds_up(total) or total == 0,
+                          on_click=change_draft, args=(editing.scale_to_100,))
+                st.button("Split evenly", on_click=change_draft, args=(editing.split_evenly,))
+            st.caption("Scale to 100% and Split evenly leave locked rows as they are.")
             if bare:
                 st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
                            "different security): " + ", ".join(bare) + ". Click 'Fix tickers'.")
@@ -896,33 +951,77 @@ with st.container(border=True):
                     lines = [f"- **{old}** → `{new}` {name} ({exch})" +
                              (f" · other listings: {', '.join(alts)}" if alts else "")
                              for old, new, name, exch, alts in changed]
-                    st.success("Updated tickers. Check they're the listings you hold; "
-                               "you can edit any ticker in the table.\n\n" + "\n".join(lines))
+                    st.success("Updated tickers. Check they're the listings you hold.\n\n" + "\n".join(lines))
                 if unresolved:
                     st.error("Couldn't find " + ", ".join(unresolved) +
-                             ". Search for them by ISIN above and replace them.")
-            named = [a["Ticker"] for a in st.session_state.pie]
-            dupes = sorted({t for t in named if named.count(t) > 1})
+                             ". Search for them by ISIN above and add them again.")
             if dupes:
                 st.warning("These tickers are in the pie more than once: " + ", ".join(dupes) +
-                           ". Merge them into one row.")
-
+                           ". Delete one of the rows.")
+        with st.expander("Paste a list"):
+            text = st.text_area("One ticker and weight per line", key="draft_paste",
+                                placeholder="VWCE.DE 60\nAGGH.L 40",
+                                help="Rows copied from a spreadsheet work too: a ticker column and a weight column.")
+            if text.strip():
+                pairs, unread = editing.parse_paste(text)
+                found, preview = [], []
+                with st.spinner("Looking up tickers…"):
+                    for t, w in pairs:
+                        hit = find_listing(t, base_ccy)
+                        preview.append({"Pasted": t, "Listing": hit[0] if hit else "not found",
+                                        "Name": hit[1] if hit else "", "Weight %": w})
+                        if hit:
+                            found.append((hit[0], hit[1], w))
+                if preview:
+                    st.dataframe(pd.DataFrame(preview), hide_index=True, width="stretch",
+                                 column_config={"Weight %": st.column_config.NumberColumn(format="%.2f")})
+                if unread:
+                    st.caption("Couldn't read " + "; ".join(md(b) for b in unread) + ".")
+                with st.container(horizontal=True):
+                    st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, True))
+                    st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, False))
     with right:
-        dfp = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
-        dfp = dfp[dfp["Weight %"] > 0].sort_values("Weight %", ascending=False, kind="stable")  # biggest slice first
-        if not dfp.empty:
+        live = sorted([(a["Ticker"], a["Name"] or a["Ticker"], float(a["Weight %"] or 0)) for a in draft
+                       if float(a["Weight %"] or 0) > 0], key=lambda r: -r[2])
+        if live:
             st.markdown("**Allocation**")
-            fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55, sort=False,
-                                   marker=dict(colors=shades(st.session_state.own_color, len(dfp)),
-                                               line=dict(color="#ffffff", width=2)),
-                                   hovertext=dfp["Name"],
-                                   hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>",
-                                   # ticker and weight next to each slice: shades alone are hard to tell apart
-                                   texttemplate="%{label}<br>%{value:.1~f}%", textposition="outside",
-                                   automargin=True))
-            fig.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=320, showlegend=False,
-                              annotations=[dict(text="Target", x=0.5, y=0.5, showarrow=False, font_size=16)])
-            st.plotly_chart(fig)
+            st.plotly_chart(donut(live, readable(st.session_state.own_color), 300), config={"displayModeBar": False})
+        if live and storage.adds_up(total) and not bare and not dupes and settings_ok:
+            try:
+                res, _, _ = cached_backtest(tuple((t, w) for t, _, w in live), start, end, base_ccy, initial,
+                                            monthly, rebalance, "cash" if rule == "cash" else "wait")
+                m = engine.metrics(res)
+                st.markdown("**Preview**")
+                st.caption("On its own, " + engine.window_label(res["total"].index[0], res["total"].index[-1]))
+                with st.container(horizontal=True):
+                    st.metric("Value now", money(m["final_value"], base_ccy, True))
+                    st.metric("Per year", "n/a" if pd.isna(m["cagr"]) else signed_pct(m["cagr"] * 100))
+                    st.metric("Worst fall", f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"))
+            except Exception as e:
+                st.caption(f"No preview: {md(e)}")
+        elif live:
+            st.caption("The preview appears once the weights add up to 100% and every ticker is found.")
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Discard changes"):
+            st.rerun()
+        can_save = (bool(draft) and storage.adds_up(total) and not bare and not dupes
+                    and not (shared_storage and not user_id))
+        if st.button("Save to My pies", icon=":material/save:", disabled=not can_save,
+                     help="Sign in to save pies." if shared_storage and not user_id else None):
+            if apply_draft():
+                try:
+                    saved, updated = save_open_pie(st.session_state.pie_name)
+                    flash("success", f"{'Updated' if updated else 'Saved'} pie '{md(saved['name'])}'.")
+                except Exception as ex:
+                    flash("error", f"Failed to save pie: {ex}")
+            st.rerun()
+        if st.button("Apply", type="primary", disabled=st.session_state.draft_new and not draft):
+            apply_draft()
+            st.rerun()
+
+
+pie_editor = st.dialog("Edit pie", width="large")(editor_body)
+new_pie_editor = st.dialog("New pie", width="large")(editor_body)
 
 # ---------------- share link and file: built after the table, so they carry this run's edits ----------------
 pie_data_raw = pie_payload() if st.session_state.pie else None
@@ -1154,13 +1253,12 @@ def pie_card(k):
                 st.badge(status, color=color)
             st.caption(f"{len(rows)} asset{'' if len(rows) == 1 else 's'}")
         with st.container(horizontal=True, gap="small"):
-            if k == "own":
-                st.button("Edit", key=f"edit_{k}", disabled=True, help="It's open in the editor below")
-            elif st.button("Edit", key=f"edit_{k}", disabled=not own_complete,
-                           help=None if own_complete else
-                           "Finish the pie you're editing (weights at 100%) before switching"):
-                open_compared(int(k))
-                st.rerun()
+            if st.button("Edit", key=f"edit_{k}", disabled=k != "own" and not own_complete,
+                         help=None if k == "own" or own_complete else
+                         f"Finish '{plain_name(OWN)}' first (weights at 100%), then edit this one"):
+                if k != "own":
+                    open_compared(int(k))
+                start_editing()
             if st.button("Copy", key=f"copy_{k}", disabled=k == "own" and not own_complete,
                          help="Adds a copy to the comparison, so you can change it and compare the two"):
                 add_to_comparison({"name": f"{plain_name(name)} (copy)",
@@ -1176,7 +1274,7 @@ def pie_card(k):
             st.plotly_chart(donut(rows, readable(pie_colors[name]), 180 if phone else 240), key=f"donut_{k}",
                             config={"displayModeBar": False})
         else:
-            st.caption("No assets yet: search for one in the editor below.")
+            st.caption("No assets yet: Edit to add some.")
         if phone:
             result_card(k)
 
@@ -1272,11 +1370,19 @@ def card_css():
 
 
 with pies_slot:
-    if card_keys:
+    if not card_keys:
+        # no example buttons here: examples live in the header menu
+        st.info("No pies yet. Pick one from Examples at the top, or start a new pie.")
+        if st.button("New pie"):
+            start_editing(new=True)
+    else:
         card_css()
         with st.container(horizontal=True, vertical_alignment="bottom"):
             st.subheader("Pies", anchor=False, width="content")
             st.caption(f"{len(card_keys)} of {MAX_COMPARED} · the donuts show target weights", width="stretch")
+            if st.button("New pie", type="tertiary", disabled=len(card_keys) >= MAX_COMPARED,
+                         help=None if len(card_keys) < MAX_COMPARED else f"Up to {MAX_COMPARED} pies: remove one first"):
+                start_editing(new=True)
             if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
                 st.session_state.compare = []
                 st.rerun()
@@ -1290,20 +1396,25 @@ with pies_slot:
                     with col:
                         pie_card(k)
 
+if st.session_state.pop("open_editor", False):
+    (new_pie_editor if st.session_state.draft_new else pie_editor)()
+
+if card_keys and not phone:  # on a phone each pie's results are in its card
+    st.divider()
+    with st.container(key="results"):
+        with st.container(horizontal=True, vertical_alignment="bottom"):
+            st.subheader("Results", anchor=False, width="content")
+            if results and (rule != "own" or not late):
+                some = next(iter(results.values()))
+                st.caption(md(f"{engine.window_label(some['total'].index[0], some['total'].index[-1])} · "
+                              f"{money(by_pie[next(iter(results))]['invested'], base_ccy, True)} put in each"),
+                           width="stretch")
+        for col, k in zip(st.columns(max(len(card_keys), CARD_COLUMNS)), card_keys):
+            with col:
+                result_card(k)
+
 if results:
     st.divider()
-    if not phone:  # on a phone each pie's results are in its card
-        with st.container(key="results"):
-            with st.container(horizontal=True, vertical_alignment="bottom"):
-                st.subheader("Results", anchor=False, width="content")
-                if rule != "own" or not late:
-                    some = next(iter(results.values()))
-                    st.caption(md(f"{engine.window_label(some['total'].index[0], some['total'].index[-1])} · "
-                                  f"{money(by_pie[next(iter(results))]['invested'], base_ccy, True)} put in each"),
-                               width="stretch")
-            for col, k in zip(st.columns(max(len(card_keys), CARD_COLUMNS)), card_keys):
-                with col:
-                    result_card(k)
     # each pie keeps the colour of its card in every chart
     colors = pie_colors
     if own:
@@ -1417,5 +1528,3 @@ if results:
                                icon=":material/download:")
 elif st.session_state.pie and not settings_ok:
     st.info("Fix the period or the plan above to see the backtest.")
-elif st.session_state.pie and not own_ready:
-    st.info("The results appear here once the weights add up to 100% and every ticker is found.")

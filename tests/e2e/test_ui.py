@@ -14,7 +14,8 @@ ROWS = {"Value now", "Return", "Per year", "Worst fall"}
 
 def test_empty_page(app):
     expect(app.page.get_by_text("Start from an example")).to_have_count(0)  # examples live in the header menu
-    expect(app.page.get_by_text("Your pie is empty. Pick one from Examples at the top")).to_be_visible()
+    expect(app.page.get_by_text("No pies yet. Pick one from Examples at the top, or start a new pie.")).to_be_visible()
+    expect(app.page.get_by_role("button", name="New pie")).to_be_visible()
     expect(app.page.get_by_role("button", name="Run backtest")).to_have_count(0)  # results update by themselves
     expect(app.page.get_by_role("button", name="Save", exact=True)).to_be_disabled()
 
@@ -51,68 +52,70 @@ def test_us_stocks_keep_their_us_listing(app):
 def test_ticker_that_would_change_needs_fix_tickers(app):
     # tickers can't be typed in any more; bare ones still arrive from files and links
     app.open("?p=Imported~EUR~2020-01-01~~1000~100~N~w~VWRA:100")
-    expect(app.page.get_by_text("have no exchange suffix")).to_be_visible()
     assert not app.metrics()  # no silent swap to another listing
-    app.click("Fix tickers")
+    expect(app.page.locator(".st-key-result_own")).to_contain_text("every ticker is found")
+    editor = app.open_editor()
+    expect(editor.get_by_text("have no exchange suffix")).to_be_visible()
+    app.click("Fix tickers", root=editor)
     assert app.tickers() == ["VWRA.L"]
+    app.apply()
     assert app.metrics()
 
 
 def test_weight_column_is_visible_and_editable(app):
     app.load_example("60/40 Stocks & Bonds")
+    app.open_editor()
     # long ETF names used to push the weights out of view
     assert app.rows()
     headers = app.grid.locator("thead [role=columnheader]").all_text_contents()
-    assert headers[:2] == ["Ticker", "Weight %"]
+    assert headers[:3] == ["Ticker", "Weight %", "Lock"]
 
     app.edit_weight(0, 70)
     assert float(app.rows()[0][1]) == 70
-    expect(app.page.get_by_text("Total 110.00% · 10.00% too much")).to_be_visible()
-    expect(app.page.get_by_text("The results appear here once")).to_be_visible()
+    expect(app.page.locator(".st-key-result_own")).to_contain_text("once its weights add up to 100%")
     assert not app.metrics()
 
-    app.click("Split evenly")
+    editor = app.open_editor()
+    expect(editor.get_by_text("Total 110.00% · 10.00% too much")).to_be_visible()
+    app.click("Split evenly", root=editor)
     assert [float(r[1]) for r in app.rows()] == [50, 50]
-    expect(app.page.get_by_text("Total 100% ✓")).to_be_visible()
+    expect(editor.get_by_text("Total 100% ✓")).to_be_visible()
+    app.apply()
     assert app.metrics()  # back to 100%: results appear by themselves
 
 
 def test_scale_to_100_keeps_the_proportions(app):
     app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 30)  # 30 + 40 = 70%
-    expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
-    app.click("Scale to 100%")
-    expect(app.page.get_by_text("Scaled the weights from 70.00% to 100%.")).to_be_visible()
+    app.edit_weight(0, 30, apply=False)  # 30 + 40 = 70%
+    expect(app.editor.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
+    app.click("Scale to 100%", root=app.editor)
     assert [float(r[1]) for r in app.rows()] == pytest.approx([42.86, 57.14])
+    app.apply()
     assert app.metrics()
 
 
 def test_add_assets_by_search(app):
-    for query in ("IE00BK5BQT80", "EIMI.L"):  # an ISIN, then a ticker
-        app.page.get_by_label("Search by name, ticker or ISIN").fill(query)
-        app.page.keyboard.press("Enter")
-        app.wait()
-        app.click("Add to pie")
+    for query in ("IE00BK5BQT80", "EIMI.L"):  # an ISIN, then a ticker; the first opens a new pie
+        app.search_add(query)
     assert len(app.rows()) == 2  # no empty "add row" line: assets only come from search
     # the search stays (clearing it during the rerun could wipe the next query); the button confirms instead
-    expect(app.page.get_by_role("button", name="Added ✓")).to_be_disabled()
+    expect(app.editor.get_by_role("button", name="Added ✓")).to_be_disabled()
     # the ISIN's first result is its euro listing (the pie is in EUR), not the London USD line
     assert app.tickers() == ["VWCE.DE", "EIMI.L"]
     assert [float(r[1]) for r in app.rows()] == [100, 0]  # the second gets what's left: nothing
+    app.apply()
+    assert app.cards() == ["My Pie"]
 
-    app.click("Clear pie")
-    expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+    app.remove_pie("My Pie")
+    expect(app.page.get_by_text("No pies yet.")).to_be_visible()
 
 
 def test_an_added_asset_gets_the_rest_and_keeps_the_others(app):
     app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 50)  # 50 + 40 = 90%
-    app.page.get_by_label("Search by name, ticker or ISIN").fill("EIMI.L")
-    app.page.keyboard.press("Enter")
-    app.wait()
-    app.click("Add to pie")
+    app.edit_weight(0, 50, apply=False)  # 50 + 40 = 90%
+    app.search_add("EIMI.L")
     assert [float(r[1]) for r in app.rows()] == [50, 40, 10]
-    expect(app.page.get_by_text("Total 100% ✓")).to_be_visible()
+    expect(app.editor.get_by_text("Total 100% ✓")).to_be_visible()
 
 
 def test_save_load_delete(app):
@@ -121,7 +124,7 @@ def test_save_load_delete(app):
     expect(app.page.get_by_text("Saved pie 'E2E save test'.")).to_be_visible()
     assert app.cards() == ["E2E save test"]
 
-    app.click("Clear pie")
+    app.remove_pie("E2E save test")
     app.open_sidebar_section("Saved pies")
     app.choose("Saved pies", "E2E save test (3 assets)")  # picking it opens it
     assert app.tickers() == [a["ticker"] for a in EXAMPLES["Three-Fund Portfolio"]["assets"]]
@@ -153,7 +156,7 @@ def test_export_then_import(app, tmp_path):
 
     path = tmp_path / "pie.json"
     path.write_text(json.dumps(dict(exported, name="Imported", initial=777.0)))
-    app.click("Clear pie")
+    app.remove_pie("All-World ETF")
     app.sidebar.locator("input[type=file]").set_input_files(path)  # opens without another click
     app.wait()
     assert app.tickers() == ["VWCE.DE"]
@@ -173,7 +176,7 @@ def test_share_link_restores_pie_and_settings(app):
     app.page.goto(link)
     app.wait()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
-    assert app.rows()[1][2] == "Apple Inc."  # names left out of the link are looked up again
+    assert app.rows()[1][3] == "Apple Inc."  # names left out of the link are looked up again
     expect(app.plan).to_contain_text("$4,321 to start")
     expect(app.plan).to_contain_text("USD")
 
@@ -187,7 +190,7 @@ def test_older_long_share_links_still_open(app):
 def test_broken_share_link_says_so(app):
     app.open("?pie=not-a-real-pie")
     expect(app.page.get_by_text("This share link can't be opened: it's damaged.")).to_be_visible()
-    expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+    expect(app.page.get_by_text("No pies yet.")).to_be_visible()
 
 
 def test_dates_before_2010_are_allowed(app):
@@ -274,9 +277,10 @@ def test_guest_account_without_google_config(app):
 def test_consecutive_weight_edits_all_stick(app):
     # each edit used to change the table's input, so the next edit was dropped once
     app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 70)
-    app.edit_weight(1, 30)
+    app.edit_weight(0, 70, apply=False)
+    app.edit_weight(1, 30, apply=False)
     assert [float(r[1]) for r in app.rows()] == [70, 30]
+    app.apply()
     assert app.metrics()
 
 
@@ -315,7 +319,7 @@ def test_a_broken_file_says_why(app, tmp_path):
     app.sidebar.locator("input[type=file]").set_input_files(path)
     app.wait()
     expect(app.sidebar.get_by_text("Could not load this file: Pie must contain at least one asset")).to_be_visible()
-    expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+    expect(app.page.get_by_text("No pies yet.")).to_be_visible()
 
 
 def test_saving_under_the_same_name_updates_the_pie(app):
@@ -328,7 +332,7 @@ def test_saving_under_the_same_name_updates_the_pie(app):
     app.open_sidebar_section("Saved pies")
     expect(app.sidebar.get_by_text("Saved pies (1)")).to_be_visible()  # updated, not copied
 
-    app.click("Clear pie")
+    app.remove_pie("E2E update test")
     app.choose("Saved pies", "E2E update test (2 assets)")
     assert [float(r[1]) for r in app.rows()] == [70, 30]
     app.delete_saved()
@@ -336,6 +340,8 @@ def test_saving_under_the_same_name_updates_the_pie(app):
 
 def test_click_a_column_name_to_sort(app):
     app.load_example("Three-Fund Portfolio")  # SWRD.L, EIMI.L, EUNA.DE
+    app.open_editor()
+    app.rows()  # the grid is drawn
     app.grid.scroll_into_view_if_needed()  # the click is at screen coordinates
     box = app.grid.bounding_box()
     app.page.mouse.click(box["x"] + 70, box["y"] + 17)  # the Ticker header
@@ -368,9 +374,9 @@ def test_share_carries_the_latest_edit(app):
 
 def test_weights_keep_two_decimals(app):
     app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 39.99)
+    app.edit_weight(0, 39.99, apply=False)
     assert float(app.rows()[0][1]) == 39.99  # used to become 39.9
-    expect(app.page.get_by_text("Total 79.99% · 20.01% left")).to_be_visible()
+    expect(app.editor.get_by_text("Total 79.99% · 20.01% left")).to_be_visible()
 
 
 def test_a_crafted_name_shows_as_typed(app):
@@ -405,10 +411,8 @@ def test_rename_cannot_take_another_pies_name(app):
 
 def test_an_asset_already_in_the_pie_cant_be_added_again(app):
     app.load_example("Tech Leaders")
-    app.page.get_by_label("Search by name, ticker or ISIN").fill("AAPL")
-    app.page.keyboard.press("Enter")
-    app.wait()
-    expect(app.page.get_by_role("button", name="Added ✓")).to_be_disabled()
+    app.search("AAPL")
+    expect(app.editor.get_by_role("button", name="Added ✓")).to_be_disabled()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
 
 
@@ -421,12 +425,10 @@ def test_value_now_shows_the_gain_on_money_put_in(app):
 
 def test_a_us_listing_picked_from_search_is_kept(app):
     # a euro pie used to flag NASDAQ's ASML as "no exchange suffix" and swap it for ASML.AS
-    app.page.get_by_label("Search by name, ticker or ISIN").fill("ASML")
-    app.page.keyboard.press("Enter")
-    app.wait()
-    app.click("Add to pie")  # the first result: ASML on NASDAQ
+    app.search_add("ASML")  # the first result: ASML on NASDAQ
     assert app.tickers() == ["ASML"]
-    expect(app.page.get_by_text("have no exchange suffix")).to_have_count(0)
+    expect(app.editor.get_by_text("have no exchange suffix")).to_have_count(0)
+    app.apply()
     assert app.metrics()  # results show without "Fix tickers"
 
 
@@ -445,11 +447,12 @@ def test_a_downloaded_unfinished_pie_opens_again(app, tmp_path):
         app.sidebar.get_by_role("button", name="Download pie (.json)").click()
     path = tmp_path / "unfinished.json"
     path.write_text(open(dl.value.path()).read())
-    app.click("Clear pie")
+    app.remove_pie("60/40 Stocks & Bonds")
     app.sidebar.locator("input[type=file]").set_input_files(path)
     app.wait()
+    app.open_editor()
     assert [float(r[1]) for r in app.rows()] == [30, 40]  # used to say the weights must sum to 100%
-    expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
+    expect(app.editor.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
 
 
 def test_a_very_long_name_keeps_the_card_name_on_one_line(app):
@@ -464,7 +467,7 @@ def test_links_say_why_they_cant_open_and_unfinished_ones_open(app):
     expect(app.page.get_by_text("This share link can't be opened: unknown currency 'XYZ'")).to_be_visible()
     app.open("?p=Mine~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:60,EUNA.DE:30")  # 90%: opens, ready to fix
     assert app.tickers() == ["VWCE.DE", "EUNA.DE"]
-    expect(app.page.get_by_text("Total 90.00% · 10.00% left")).to_be_visible()
+    expect(app.open_editor().get_by_text("Total 90.00% · 10.00% left")).to_be_visible()
 
 
 def test_charts_have_a_text_alternative(app):
@@ -488,3 +491,46 @@ def test_each_card_says_whether_the_pie_is_saved(app):
     app.choose("Saved pies", "E2E status (2 assets)")
     app.delete_saved()
     expect(status).to_have_text("Not saved yet")  # still open, no longer saved
+
+
+def test_editor_applies_only_on_apply(app):
+    app.load_example("60/40 Stocks & Bonds")
+    before = app.results()
+    app.edit_weight(0, 50, apply=False)
+    app.edit_weight(1, 50, apply=False)
+    app.close_editor()  # ✕ or Escape: nothing changes
+    assert app.results() == before
+    assert [float(r[1]) for r in app.rows()] == [60, 40]  # the next edit starts from the pie again
+    app.edit_weight(0, 50, apply=False)
+    app.edit_weight(1, 50, apply=False)
+    app.click("Discard changes", root=app.editor)
+    assert app.results() == before
+    app.edit_weight(0, 50, apply=False)
+    app.edit_weight(1, 50)  # and Apply
+    assert app.results() != before
+
+
+def test_paste_a_list_previews_first(app):
+    app.load_example("Tech Leaders")
+    editor = app.open_editor()
+    editor.get_by_text("Paste a list").click()
+    box = editor.get_by_role("textbox", name="One ticker and weight per line")
+    box.fill("Ticker\tWeight\nVWCE.DE\t60%\nAAPL 40\nZZZZ9 5\nnonsense")
+    box.press("Control+Enter")
+    app.wait()
+    expect(editor.get_by_text("Couldn't read line 5: nonsense.")).to_be_visible()
+    preview = editor.get_by_test_id("stDataFrame").nth(1)
+    assert [r[:2] for r in app.rows(preview)] == [["VWCE.DE", "VWCE.DE"], ["AAPL", "AAPL"], ["ZZZZ9", "not found"]]
+    assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]  # nothing replaced yet
+    app.click("Replace rows", root=editor)
+    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
+
+
+def test_locked_rows_are_kept_by_split(app):
+    app.load_example("Three-Fund Portfolio")
+    app.edit_weight(0, 70, apply=False)
+    box = app.grid.bounding_box()
+    app.page.mouse.click(box["x"] + 250, box["y"] + 35 + 17)  # the first row's Lock box
+    app.wait()
+    app.click("Split evenly", root=app.editor)
+    assert [float(r[1]) for r in app.rows()] == [70, 15, 15]

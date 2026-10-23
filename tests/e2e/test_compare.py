@@ -45,9 +45,10 @@ def test_snapshot_of_your_own_pie(app):
 def test_a_copy_keeps_the_fund_names(app):
     app.load_example("Tech Leaders")
     copy_pie(app, "Tech Leaders")
-    app.click("Split evenly")  # make the two differ, so switching keeps both
+    app.click("Split evenly", root=app.open_editor())  # make the two differ, so switching keeps both
+    app.apply()
     app.open_pie("Tech Leaders (copy)")
-    assert [r[2] for r in app.rows()] == ["iShares S&P 500 Information Technology Sector UCITS ETF",
+    assert [r[3] for r in app.rows()] == ["iShares S&P 500 Information Technology Sector UCITS ETF",
                                           "Apple Inc.", "Microsoft Corporation"]  # were the tickers
 
 

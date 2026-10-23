@@ -130,7 +130,47 @@ class App:
         return self.page.locator(f".st-key-pie_card_{self.card_keys()[name]}")
 
     def open_pie(self, name):
-        self.card(name).get_by_role("button", name="Edit", exact=True).click()
+        """Make a pie the open one (Edit on its card), then close the editor that comes up."""
+        self.open_editor(name)
+        self.close_editor()
+
+    # --- the editor: a dialog; the page changes only on Apply ---
+    @property
+    def editor(self):
+        return self.page.get_by_role("dialog").filter(has=self.page.get_by_role("textbox", name="Pie name"))
+
+    def open_editor(self, name=None):
+        """The editor on a pie (default: the open one), or on a new pie when there's none."""
+        if self.editor.count() and name is None:
+            return self.editor
+        if name is None and not self.cards():
+            self.page.get_by_role("button", name="New pie").click()
+        else:
+            self.card(name or self.editing()).get_by_role("button", name="Edit", exact=True).click()
+        expect(self.editor).to_be_visible(timeout=60_000)
+        self.wait()
+        return self.editor
+
+    def close_editor(self):
+        """Close without applying, with the dialog's ✕ (Escape would first go to a selected table cell)."""
+        self.page.get_by_role("dialog").get_by_role("button", name="Close").click()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
+        self.wait()
+
+    def apply(self):
+        self.editor.get_by_role("button", name="Apply").click()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
+        self.wait()
+
+    def search(self, query):
+        box = self.open_editor().get_by_role("textbox", name="Search by name, ticker or ISIN")
+        box.fill(query)
+        box.press("Enter")
+        self.wait()
+
+    def search_add(self, query):
+        self.search(query)
+        self.editor.get_by_role("button", name="Add to pie").click()
         self.wait()
 
     def remove_pie(self, name):
@@ -219,10 +259,17 @@ class App:
     # --- pie table (a canvas grid; read through its accessible table) ---
     @property
     def grid(self):
-        return self.page.get_by_test_id("stDataFrame").first
+        return self.editor.get_by_test_id("stDataFrame").first
 
     def rows(self, grid=None):
-        """Non-empty rows of a table (default: the pie editor); the accessible table fills in after a rerun."""
+        """Non-empty rows of a table (default: the editor's, opening and closing it if it's closed); the
+        accessible table fills in after a rerun."""
+        if grid is None and not self.editor.count():
+            self.open_editor()
+            try:
+                return self.rows()
+            finally:
+                self.close_editor()
         for _ in range(40):
             out = []
             for row in (grid or self.grid).locator("tbody [role=row]").all():
@@ -251,19 +298,21 @@ class App:
     def tickers(self):
         return [r[0] for r in self.rows()]
 
-    def edit_weight(self, row, value):
+    def edit_weight(self, row, value, apply=True):
+        """Change a weight in the editor (opened if needed), then Apply unless apply=False."""
+        self.open_editor()
         self.rows()  # the grid is interactive once its accessible table is filled
         self.grid.scroll_into_view_if_needed()  # the clicks below are at screen coordinates
         box = self.grid.bounding_box()
         for _ in range(5):
             # canvas cell: row marker and the narrow Ticker column come first
-            self.page.mouse.click(box["x"] + 140, box["y"] + 35 * (row + 1) + 17)
-            self.page.wait_for_timeout(200)
-            self.page.keyboard.press("Enter")  # open the cell editor; typing first would eat a key
+            # a double click opens the cell editor (Enter didn't once the hidden table had the focus);
+            # typing first would eat a key
+            self.page.mouse.dblclick(box["x"] + 140, box["y"] + 35 * (row + 1) + 17)
             self.page.wait_for_timeout(400)
             if self.page.evaluate("document.activeElement.classList.contains('gdg-input')"):
                 break
-            self.page.keyboard.press("Escape")
+            self.page.wait_for_timeout(500)  # not Escape: that would close the dialog
         else:
             raise AssertionError("cell editor did not open")
         self.page.keyboard.press("Control+a")
@@ -271,6 +320,8 @@ class App:
         self.page.wait_for_timeout(300)  # the number editor applies typed text with a delay
         self.page.keyboard.press("Enter")
         self.wait()
+        if apply:
+            self.apply()
 
     @staticmethod
     def amount(text):
