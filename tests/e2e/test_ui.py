@@ -597,3 +597,20 @@ def test_pasted_bare_tickers_find_their_european_listing_and_say_so(app):
     assert [(r[0], float(r[1])) for r in app.rows()] == [("SGLN.L", 50), ("AAPL", 50)]
     expect(editor.get_by_text("AAPL is in the list twice: its weights were added up (50.00%).")).to_be_visible()
     expect(editor.get_by_text("Not found, so left out: ZZZZ9.")).to_be_visible()
+
+
+def test_urls_in_names_and_crafted_tickers_stay_text(app):
+    # tickers arrive from links and files too, so they're text like names
+    name = "p5 see http://e.com now"
+    tickers = '<A HREF="http://e.com">AAPL</A>:50,<I>MSFT</I> $X$ **Y**:50'
+    app.open("?p=" + urllib.parse.quote_plus(f"{name}~EUR~2020-01-01~~1000~0~N~w~{tickers}", safe="~:,"))
+    app.remove_pie(name)  # the Undo note names it
+    main = app.page.get_by_test_id("stMain")
+    expect(main.get_by_text("Removed 'p5 see http")).to_be_visible()
+    expect(main.locator("a[href*='e.com']")).to_have_count(0)  # was an auto-link
+    app.click("Undo")
+    donut = app.card(name).get_by_test_id("stPlotlyChart")
+    expect(donut).to_contain_text("<I>MSFT</I>")
+    editor = app.open_editor()
+    expect(editor.locator(".katex, a[href*='e.com']")).to_have_count(0)
+    expect(editor.get_by_test_id("stAlert").filter(has_text="no exchange suffix")).to_contain_text("<I>MSFT</I> $X$ **Y**")

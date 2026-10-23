@@ -254,10 +254,15 @@ def shades(color, n):
 MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>$:])")  # ":" too, or "http://…" becomes a link
 
 
+AUTOLINK = re.compile(r"(?i):(?=//)|w(?=ww\.)")  # where Streamlit's link detection starts: "://", "www."
+
+
 def md(text):
-    """Text shown as typed in Markdown (labels, captions, messages): pie names come from people and
-    links, so their * _ [ ] $ ~ must not turn into formatting, links or maths."""
-    return MD_SPECIAL.sub(r"\\\1", str(text))
+    """Text shown as typed in Markdown (labels, captions, messages): pie names and tickers come from people
+    and links, so their * _ [ ] $ ~ must not turn into formatting, links or maths. Escaping doesn't stop a bare
+    "http://…" or "www.…" turning into a link, so a zero-width space goes into those."""
+    text = AUTOLINK.sub(lambda m: m.group(0) + "\u200b", str(text))
+    return MD_SPECIAL.sub(r"\\\1", text)
 
 
 def screen_reader_text(text):
@@ -967,19 +972,19 @@ def editor_body():
                 st.caption(md(note))
             if bare:
                 st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
-                           "different security): " + ", ".join(bare) + ". Click 'Fix tickers'.")
+                           "different security): " + md(", ".join(bare)) + ". Click 'Fix tickers'.")
             if st.session_state.fix_report:
                 changed, unresolved = st.session_state.fix_report
                 if changed:
-                    lines = [f"- **{old}** → `{new}` {name} ({exch})" +
-                             (f" · other listings: {', '.join(alts)}" if alts else "")
+                    lines = [f"- **{md(old)}** → `{new}` {md(name)} ({md(exch)})" +
+                             (f" · other listings: {md(', '.join(alts))}" if alts else "")
                              for old, new, name, exch, alts in changed]
                     st.success("Updated tickers. Check they're the listings you hold.\n\n" + "\n".join(lines))
                 if unresolved:
-                    st.error("Couldn't find " + ", ".join(unresolved) +
+                    st.error("Couldn't find " + md(", ".join(unresolved)) +
                              ". Search for them by ISIN above and add them again.")
             if dupes:
-                st.warning("These tickers are in the pie more than once: " + ", ".join(dupes) +
+                st.warning("These tickers are in the pie more than once: " + md(", ".join(dupes)) +
                            ". Delete one of the rows.")
         with st.expander("Paste a list"):
             text = st.text_area("One ticker and weight per line", key="draft_paste",
@@ -1210,7 +1215,7 @@ with period_detail:
             "common": (f"Start all pies on {nice(common)}" if several else f"Start on {nice(common)}")
                       if common is not None else "Start when every asset has prices",
             "own": "Each pie from its own first price",
-            "cash": f"Start on {nice(start)}, holding cash until {ticker} lists",
+            "cash": f"Start on {nice(start)}, holding cash until {md(ticker)} lists",
         }
         captions = {
             "common": ":green-badge[recommended] " + (
@@ -1253,9 +1258,10 @@ def card_rows(k):
 
 def donut(rows, color, height):
     """The pie's target weights, in shades of its colour, with the ticker and weight next to each slice."""
-    fig = go.Figure(go.Pie(labels=[r[0] for r in rows], values=[r[2] for r in rows], hole=0.55, sort=False,
-                           marker=dict(colors=shades(color, len(rows)), line=dict(color="#ffffff", width=2)),
-                           hovertext=[r[1] for r in rows],
+    # tickers and names come from links and files too: Plotly reads <a>, <i> in labels
+    fig = go.Figure(go.Pie(labels=[html.escape(r[0]) for r in rows], values=[r[2] for r in rows], hole=0.55,
+                           sort=False, marker=dict(colors=shades(color, len(rows)), line=dict(color="#ffffff", width=2)),
+                           hovertext=[html.escape(r[1]) for r in rows],
                            hovertemplate="%{label}<br>%{hovertext}<br>%{value:.2f}%<extra></extra>",
                            # shades alone are hard to tell apart
                            texttemplate="%{label}<br>%{value:.1~f}%", textposition="outside", automargin=True))
@@ -1539,7 +1545,7 @@ if results:
     if own:
         weights = dict(entries[0][1])
         with tabs["By asset"]:
-            vals = res["values"].rename(columns=names)
+            vals = res["values"].rename(columns=lambda t: html.escape(names.get(t, t)))
             fig = px.area(vals, color_discrete_sequence=shades(st.session_state.own_color, len(names)))
             fig.update_layout(height=450, hovermode="x unified", yaxis_title=ccy, legend_title="",
                               margin=dict(t=20, b=20),
@@ -1547,7 +1553,7 @@ if results:
             screen_reader_text("Value of each asset now: " + "; ".join(
                 f"{n}: {money(v, ccy, True)}" for n, v in vals.iloc[-1].items()) + ".")
             st.plotly_chart(fig, config={"displayModeBar": False} if phone else {})
-            norm = engine.rebase(res["prices"]).rename(columns=names)
+            norm = engine.rebase(res["prices"]).rename(columns=lambda t: html.escape(names.get(t, t)))
             fig2 = px.line(norm, color_discrete_sequence=PALETTE, title="Each asset, rebased to 100")
             fig2.update_layout(height=380, hovermode="x unified", legend_title="", yaxis_title="",
                                legend=dict(orientation="h", y=-0.2) if on_phone() else {})
