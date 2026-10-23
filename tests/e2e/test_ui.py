@@ -356,5 +356,5 @@ def test_rename_cannot_take_another_pies_name(app):
     app.page.keyboard.press("Escape")
     app.click("Delete", root=app.sidebar, exact=True)  # tidy up: B is still picked
     app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E dup A (1 assets)")
+    app.choose("Saved pies", "E2E dup A (1 asset)")
     app.click("Delete", root=app.sidebar, exact=True)

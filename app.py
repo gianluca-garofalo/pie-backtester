@@ -513,7 +513,8 @@ with pies_box:
             picked = st.selectbox(
                 "Saved pies", list(by_id), key="saved_pick", label_visibility="collapsed",
                 placeholder="Pick a pie to open",
-                format_func=lambda i: f"{by_id[i]['name']} ({len(by_id[i]['assets'])} assets)"
+                format_func=lambda i: f"{by_id[i]['name']} ({len(by_id[i]['assets'])} "
+                                      f"asset{'' if len(by_id[i]['assets']) == 1 else 's'})"
                                       + ("" if is_mine(by_id[i]) else " · public"))
             if picked and picked != st.session_state.get("opened_saved_id"):
                 if load_pie(by_id[picked]):
