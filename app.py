@@ -589,7 +589,7 @@ with st.container(border=True):
                 column_order=["Ticker", "Weight %", "Name"],
                 column_config={
                     "Ticker": st.column_config.TextColumn(width="small", help="Yahoo symbol. Add assets with the search above."),
-                    "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.5,
+                    "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.01,
                                                               format="%.2f", width="small"),
                     "Name": st.column_config.TextColumn(width="large"),
                 },

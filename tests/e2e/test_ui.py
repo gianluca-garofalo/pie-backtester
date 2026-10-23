@@ -79,7 +79,7 @@ def test_scale_to_100_keeps_the_proportions(app):
     app.edit_weight(0, 30)  # 30 + 40 = 70%
     expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
     app.click("Scale to 100%")
-    assert [float(r[1]) for r in app.rows()] == pytest.approx([42.86, 57.14], abs=0.1)  # table shows 1 decimal
+    assert [float(r[1]) for r in app.rows()] == pytest.approx([42.86, 57.14])
     assert app.metrics()
 
 
@@ -320,3 +320,10 @@ def test_share_carries_the_latest_edit(app):
     app.page.get_by_role("button", name="Share").click()
     link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
     assert link.endswith("VWCE.DE:70,EUNA.DE:30")
+
+
+def test_weights_keep_two_decimals(app):
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 39.99)
+    assert float(app.rows()[0][1]) == 39.99  # used to become 39.9
+    expect(app.page.get_by_text("Total 79.99% · 20.01% left")).to_be_visible()
