@@ -843,7 +843,7 @@ with strip:
         # Streamlit buttons can't be coloured, so each chip's container gets a small CSS rule
         st.html("<style>" + "".join(
             f".st-key-chip_{k}{{border-color:{c} !important;border-radius:999px !important;padding:0 10px !important}}"
-            f".st-key-chip_name_{k} p::before{{content:'●';color:{c};margin-right:6px}}"
+            f".st-key-chip_name_{k} p::before{{content:'●';content:'●' / '';color:{c};margin-right:6px}}"  # '/ ""': not read out
             for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}"
             # a long name is cut with "…", so the ✕ stays on the chip's line
             "[class*='st-key-chip_name_'] p{max-width:18rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"
