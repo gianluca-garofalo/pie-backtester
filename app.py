@@ -234,8 +234,8 @@ def flash(kind, msg):
 
 
 def copy_button(text, label="Copy link"):
-    """A button that copies text to the clipboard. The code block's own copy icon only shows on hover,
-    so touch screens never see it; a component frame may write to the clipboard."""
+    """A button that copies text to the clipboard, for phones: the code block's own copy icon only shows
+    on hover. A component frame may write to the clipboard."""
     dark = (getattr(st.context.theme, "type", None) or "light") == "dark"
     fg, border = ("#fafafa", "rgba(250,250,250,.3)") if dark else ("#31333f", "rgba(49,51,63,.25)")
     components.html(f"""
@@ -820,8 +820,9 @@ with share_pop:
             st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
         else:
             link = f"{st.context.url or ''}?p={encoded_param}"
-            st.code(link, language=None, wrap_lines=True)
-            copy_button(link)
+            st.code(link, language=None, wrap_lines=True)  # its copy icon shows on hover
+            if on_phone():  # no hover on a phone, so the icon never shows: a button instead
+                copy_button(link)
             st.caption("The link has your pie and its settings.")
 if share_ok:
     norm_export = storage.normalize_pie(pie_data_raw)
