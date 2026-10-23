@@ -9,6 +9,7 @@ venv/
 ENV/
 
 # Streamlit & Local Data
+.streamlit/client_secret.json
 .streamlit/secrets.toml
 saved_pies.json
 streamlit.log
