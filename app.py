@@ -112,8 +112,8 @@ def load_pie(cfg):
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
     others = [e for e in st.session_state.compare if e["weights"] != loaded]  # a compared pie that's opened leaves
-    moving = (previous and storage.adds_up(sum(previous.values())) and previous != loaded
-              and not any(e["weights"] == previous for e in others))
+    # a compared pie with the same weights (a copy) doesn't stop it moving: it would be lost
+    moving = previous and storage.adds_up(sum(previous.values())) and previous != loaded
     if moving and len(others) >= MAX_COMPARED - 1:
         flash("warning", f"You can compare up to {MAX_COMPARED} pies, including the one you're editing. "
                          f"Remove one first, then open '{md(cfg.get('name') or 'Pie')}'.")
@@ -126,7 +126,7 @@ def load_pie(cfg):
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                                       for a in st.session_state.pie if a["Ticker"] in previous]},
                           color=st.session_state.own_color, order=st.session_state.own_order,
-                          saved_ref=st.session_state.saved_ref)
+                          saved_ref=st.session_state.saved_ref, duplicate_ok=True)
     elif previous and previous != loaded and not storage.adds_up(sum(previous.values())):
         flash("toast", f"'{md(st.session_state.pie_name)}' was closed: its weights add up to "
                        f"{sum(previous.values()):.2f}%, so it couldn't join the comparison.")
@@ -467,9 +467,10 @@ def prices_for(tickers, start, end, base):
     return prices.loc[:pd.Timestamp(end)], {"currencies": currencies}
 
 
-def add_to_comparison(cfg, color=None, order=None, saved_ref=None, source=None):
+def add_to_comparison(cfg, color=None, order=None, saved_ref=None, source=None, duplicate_ok=False):
     """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing.
-    source: the compared pie (its index) this one is a copy of, which doesn't count as a duplicate."""
+    source: the compared pie (its index) this one is a copy of, which doesn't count as a duplicate.
+    duplicate_ok: the open pie moving aside keeps its place even when a copy has the same weights."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
         flash("warning", f"'{md(cfg.get('name') or 'Pie')}' wasn't kept: you can compare up to {MAX_COMPARED} "
@@ -486,7 +487,8 @@ def add_to_comparison(cfg, color=None, order=None, saved_ref=None, source=None):
         weights[t] = weights.get(t, 0.0) + float(a["weight"])
         names.setdefault(t, name)
     weights = {t: w for t, w in weights.items() if w > 0}
-    if same := next((e for i, e in enumerate(others) if e["weights"] == weights and i != source), None):
+    if not duplicate_ok and (same := next((e for i, e in enumerate(others)
+                                           if e["weights"] == weights and i != source), None)):
         flash("toast", f"This pie is already in the comparison as '{md(same['name'])}'.")
         return
     taken = {e["name"] for e in others}
