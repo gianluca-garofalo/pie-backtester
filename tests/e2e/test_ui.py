@@ -1,4 +1,5 @@
 import json
+import re
 import urllib.parse
 
 import pytest
@@ -377,5 +378,5 @@ def test_adding_an_asset_twice_says_so(app):
 def test_value_now_shows_the_gain_on_money_put_in(app):
     app.load_example("All-World ETF")
     tile = app.page.get_by_test_id("stMetric").filter(has_text="Value now")
-    expect(tile).to_contain_text("% on money put in")
+    expect(tile).to_contain_text(re.compile(r"gain \([+−-]\d+%\)"))  # the gain on money put in
     expect(app.page.get_by_test_id("stMetric").filter(has_text="Return")).to_contain_text("the pie's own growth")

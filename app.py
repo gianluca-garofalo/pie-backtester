@@ -865,13 +865,13 @@ if results:
         gain = m["profit"]
         with st.container(horizontal=True):
             # the gain on money put in is what an account shows; Return (time-weighted) is the pie's own growth
-            on_put_in = f" · {gain / m['invested'] * 100:+.0f}% on money put in" if m["invested"] > 0 else ""
+            on_put_in = f" ({gain / m['invested'] * 100:+.0f}%)" if m["invested"] > 0 else ""
             st.metric("Value now", money(m["final_value"], ccy, True), border=True, height="stretch",
                       delta=f"{'-' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}"
-                            + on_put_in,
+                            + on_put_in,  # "+€6.3k gain (+69%)"; the tooltip says it's on the money put in
                       chart_data=res["total"].resample("W").last().tolist(), chart_type="area",
                       help=f"What the pie is worth on {res['total'].index[-1].date()}. The gain is the value minus "
-                           "everything you put in, also shown as a percentage of it.")
+                           "everything you put in; the percentage is the gain on the money you put in.")
             st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
                       delta=f"{money(res['invested'].iloc[0], ccy, True)} + {deposits} deposits",
                       delta_color="off", delta_arrow="off")
