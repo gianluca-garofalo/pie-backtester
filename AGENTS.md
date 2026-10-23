@@ -33,7 +33,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 - Examples live only in the header menu: the user removed the example buttons from the empty page.
 - `docs/how-its-calculated.md` is shown in the "How it's calculated" tab. Update it whenever a formula in `engine.py` changes.
 - Format money with `money(x, ccy, compact)` (in `engine.py`). Pass pie names and any text with `$` through `md()` before Markdown, button labels, captions or messages, or names turn into formatting, links or maths. Use `html.escape` for Plotly labels.
-- Show messages that must survive a `st.rerun()` with `flash(kind, msg)`.
+- Show messages that must survive a `st.rerun()` with `flash(kind, msg)`; `flash("toast", msg)` for a toast (a plain `st.toast` before `st.rerun()` is lost).
+- Phones: Streamlit doesn't tell the app the screen width, so `on_phone()` checks the user agent. Phone-only layout (legend instead of end labels, fewer table columns) goes through it; touch-only CSS uses `@media (pointer:coarse)`.
 - Load prices with `prices_for()`. It keeps each ticker's full history for the day in `price_store()` (shared by all visitors) and cuts it to the sidebar dates, so date changes download nothing and a pie only fetches its new tickers, in one request. Every pie, yours and the compared ones, is simulated by `cached_backtest`, cached per pie, so unrelated reruns don't re-simulate. Each pie starts on its first day with prices within the sidebar dates.
 - Sign-in and storage: `st.login` (Google) identifies users as `google:<sub>`. Supabase is a database used only from the server with the service key, so `SupabaseStorageBackend` must filter every query by `owner_id`; RLS is not the safety net. Never offer the guest account when storage is shared.
 - Commits: never add `Co-Authored-By:` or `Claude-Session:` trailers.
