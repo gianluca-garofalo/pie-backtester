@@ -242,3 +242,16 @@ def app(page: Page, app_url):
     yield a
     a.assert_healthy()
 
+
+
+@pytest.fixture
+def phone(browser, playwright, app_url):
+    """The app on an emulated iPhone: phone user agent, touch screen, 390 px wide."""
+    context = browser.new_context(**{k: v for k, v in playwright.devices["iPhone 13"].items()
+                                     if k != "default_browser_type"})
+    page = context.new_page()
+    page.set_default_timeout(30_000)
+    a = App(page, app_url).open()
+    yield a
+    a.assert_healthy()
+    context.close()

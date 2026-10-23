@@ -211,6 +211,12 @@ def flash(kind, msg):
     st.session_state.flash = (kind, msg)
 
 
+def on_phone():
+    """Whether the visitor is on a phone. Streamlit doesn't tell the app the screen width, but phone
+    browsers say "Mobi" in their user agent."""
+    return "Mobi" in (st.context.headers.get("User-Agent") or "")
+
+
 def amount_format(key):
     """Number format for an amount field: "1000", or "10.12" once it has cents."""
     return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
@@ -221,7 +227,8 @@ def side_label(text):
     st.html(f'<div class="side-label">{text}</div>')
 
 
-# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px.
+# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px. A few rules
+# for touch screens (the Share box's copy button) live here too, since this CSS is on every page.
 # It uses Streamlit's test ids, so check it after a Streamlit upgrade.
 SIDEBAR_CSS = """<style>
 .side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
@@ -233,6 +240,8 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
+@media (pointer:coarse){[data-testid=stCode] [data-testid=stElementToolbarButton],
+  [data-testid=stCode] [data-testid=stElementToolbar]{opacity:1 !important;visibility:visible !important}}
 </style>"""
 
 
@@ -767,7 +776,9 @@ with strip:
             for k, _, c in chips) + ".st-key-chip_name_own p{font-weight:700}"
             # ✕ shows only its icon; the label stays for screen readers ("Remove <pie>")
             "[class*='st-key-chip_x_'] [data-testid=stMarkdownContainer]{position:absolute;width:1px;height:1px;"
-            "overflow:hidden;clip-path:inset(50%);white-space:nowrap}</style>")
+            "overflow:hidden;clip-path:inset(50%);white-space:nowrap}"
+            # touch screens: a finger-sized ✕
+            "@media (pointer:coarse){[class*='st-key-chip_x_'] button{min-width:36px;min-height:36px}}</style>")
         with st.container(horizontal=True, vertical_alignment="center"):
             for k, name, c in chips:
                 with st.container(key=f"chip_{k}", border=True, horizontal=True, width="content",
@@ -927,7 +938,9 @@ if results:
                                      line=dict(color=colors[name], width=1.2),
                                      fill="tozeroy" if len(results) == 1 else None), row=2, col=1)
 
-        # names at the line ends instead of a legend, nudged apart so they don't overlap
+        # names at the line ends instead of a legend, nudged apart so they don't overlap; on a phone those
+        # labels would take half the width, so a legend below the chart takes their place
+        phone = on_phone()
         values = pd.concat(list(lines.values()) + [invested])
         lo, hi = max(values.min(), 1e-9) * 0.95, values.max() * 1.05
         if scale == "Log":
@@ -935,7 +948,7 @@ if results:
         ends = sorted([(n, s.iloc[-1], colors[n]) for n, s in lines.items()] +
                       [("You put in", invested.iloc[-1], "#5f636e")], key=lambda x: -x[1])
         y_prev = 1.08
-        for name, value, color in ends:
+        for name, value, color in ([] if phone else ends):
             y = ((np.log10(value) if scale == "Log" else value) - lo) / (hi - lo)
             y = min(y, y_prev - 0.07)
             y_prev = y
@@ -944,7 +957,8 @@ if results:
                                text=f"<b>{html.escape(label)}</b> {money(value, base_ccy, True)}", font=dict(color=color, size=12))
         fig.update_yaxes(type="log" if scale == "Log" else "linear", range=[lo, hi], title=base_ccy, row=1, col=1)
         fig.update_yaxes(title="% below high", row=2, col=1)
-        fig.update_layout(height=560, hovermode="x unified", showlegend=False, margin=dict(t=10, b=10, r=190))
+        fig.update_layout(height=560, hovermode="x unified", showlegend=phone, margin=dict(t=10, b=10, r=10 if phone else 190),
+                          legend=dict(orientation="h", y=-0.12, x=0, title=None))
         st.plotly_chart(fig)
         for n, r in results.items():
             d = r["total"].index[0].date()
@@ -967,7 +981,8 @@ if results:
             vals = res["values"].rename(columns=names)
             fig = px.area(vals, color_discrete_sequence=shades(st.session_state.own_color, len(names)))
             fig.update_layout(height=450, hovermode="x unified", yaxis_title=ccy, legend_title="",
-                              margin=dict(t=20, b=20))
+                              margin=dict(t=20, b=20),
+                              legend=dict(orientation="h", y=-0.15) if on_phone() else {})
             st.plotly_chart(fig)
             norm = engine.rebase(res["prices"]).rename(columns=names)
             fig2 = px.line(norm, color_discrete_sequence=PALETTE, title="Each asset, rebased to 100")
@@ -976,8 +991,9 @@ if results:
         with tabs["Holdings"]:
             table = engine.per_asset_table(res, weights, names)
             st.dataframe(table, hide_index=True, width="stretch",
-                         column_order=["Asset", "Ticker", "Target %", "Current %", "Drift", "Value", "Gain",
-                                       "Price return %", "History"],
+                         column_order=(["Ticker", "Current %", "Value", "Gain"] if on_phone() else
+                                       ["Asset", "Ticker", "Target %", "Current %", "Drift", "Value", "Gain",
+                                        "Price return %", "History"]),
                          column_config={
                              "Target %": st.column_config.NumberColumn(format="%.1f"),
                              "Current %": st.column_config.NumberColumn(format="%.1f"),
@@ -1006,7 +1022,8 @@ if st.session_state.compare and len(results) > 1:
     st.subheader("Compared pies")
     table = engine.comparison_table(results)
     same_invested = table["Invested"].round(2).nunique() == 1
-    shown = table[["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"]
+    shown = table[(["Pie", "Final value", "Return %", "CAGR %"] if on_phone() else  # what fits on a phone
+                   ["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"])
                   + ([] if same_invested else ["Invested"])].copy()
     best = {"Final value": "max", "Return %": "max", "CAGR %": "max", "Max drawdown %": "max", "Volatility %": "min"}
     # a pie that joined later covers a shorter period, so its return figures don't compete for "best"
@@ -1018,6 +1035,8 @@ if st.session_state.compare and len(results) > 1:
         """Each pie's name in its colour; the best value in each column in bold."""
         css = pd.DataFrame("", index=df.index, columns=df.columns)
         for col, how in best.items():
+            if col not in df:  # fewer columns on a phone
+                continue
             ranked = df[col] if col == "Final value" or later_rows.all() else df[col][~later_rows]
             if ranked.notna().sum() > 1:  # "best" needs at least two pies to compare
                 css.loc[getattr(ranked, f"idx{how}")(), col] = "font-weight: 700"
@@ -1026,10 +1045,10 @@ if st.session_state.compare and len(results) > 1:
 
     pct = lambda v: "—" if pd.isna(v) else f"{v:+.1f}%"  # noqa: E731
     st.dataframe(
-        shown.style.apply(emphasis, axis=None).format({
+        shown.style.apply(emphasis, axis=None).format({k: f for k, f in {
             "Final value": lambda v: money(v, base_ccy), "Invested": lambda v: money(v, base_ccy),
             "Return %": pct, "CAGR %": pct,
-            "Max drawdown %": lambda v: f"{v:.1f}%".replace("-", "−"), "Volatility %": "{:.1f}%"}),
+            "Max drawdown %": lambda v: f"{v:.1f}%".replace("-", "−"), "Volatility %": "{:.1f}%"}.items() if k in shown}),
         hide_index=True, width="stretch", column_config={
             "From": st.column_config.DateColumn(help="Each pie starts on the first day it has prices"),
             "Final value": "Value", "Return %": st.column_config.Column("Return", help="Time-weighted"),

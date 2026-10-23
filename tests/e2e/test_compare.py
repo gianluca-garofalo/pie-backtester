@@ -137,3 +137,17 @@ def test_chips_keep_their_place_when_switching(app):
     assert app.chips() == ["All-World ETF (editing)", "Tech Leaders", "60/40 Stocks & Bonds"]
     app.open_pie("Tech Leaders")
     assert app.chips() == ["All-World ETF", "Tech Leaders (editing)", "60/40 Stocks & Bonds"]
+
+
+def test_phone_layout(phone):
+    phone.load_example("All-World ETF")
+    phone.load_example("Tech Leaders")
+    chart = phone.page.get_by_test_id("stPlotlyChart").nth(1)  # the Growth chart (the donut is first)
+    expect(chart.locator(".legend")).to_have_count(1)  # a legend below instead of labels on the right
+    expect(chart.locator(".annotation-text")).to_have_count(0)
+    table = phone.page.get_by_test_id("stDataFrame").last
+    table.scroll_into_view_if_needed()  # tables below the fold are drawn when they come into view
+    phone.eventually(lambda: [h.strip() for h in table.locator("thead [role=columnheader]").all_text_contents()
+                              if h.strip()], ["Pie", "Value", "Return", "Per year"])
+    box = phone.page.get_by_role("button", name="Remove All-World ETF", exact=True).bounding_box()
+    assert box["width"] >= 36 and box["height"] >= 36  # a finger-sized ✕
