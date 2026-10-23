@@ -94,8 +94,8 @@ def test_add_assets_by_search(app):
         app.wait()
         app.click("Add to pie")
     assert len(app.rows()) == 2  # no empty "add row" line: assets only come from search
-    expect(app.page.get_by_label("Search by name, ticker or ISIN")).to_have_value("")  # cleared after adding
-    expect(app.page.get_by_role("button", name="Add to pie")).to_have_count(0)
+    # the search stays (clearing it during the rerun could wipe the next query); the button confirms instead
+    expect(app.page.get_by_role("button", name="Added ✓")).to_be_disabled()
     # the ISIN's first result is its euro listing (the pie is in EUR), not the London USD line
     assert app.tickers() == ["VWCE.DE", "EIMI.L"]
     assert [float(r[1]) for r in app.rows()] == [100, 0]  # the second gets what's left: nothing
@@ -367,13 +367,12 @@ def test_rename_cannot_take_another_pies_name(app):
     app.delete_saved()
 
 
-def test_adding_an_asset_twice_says_so(app):
+def test_an_asset_already_in_the_pie_cant_be_added_again(app):
     app.load_example("Tech Leaders")
     app.page.get_by_label("Search by name, ticker or ISIN").fill("AAPL")
     app.page.keyboard.press("Enter")
     app.wait()
-    app.click("Add to pie")
-    expect(app.page.get_by_text("AAPL is already in the pie.")).to_be_visible()
+    expect(app.page.get_by_role("button", name="Added ✓")).to_be_disabled()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
 
 

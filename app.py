@@ -347,7 +347,7 @@ for _key, _value in st.session_state.pop("pending_settings", {}).items():
 def add_asset(symbol: str, name: str):
     if any(a["Ticker"] == symbol for a in st.session_state.pie):
         flash("toast", f"{md(symbol)} is already in the pie.")  # a plain toast is lost in the rerun that follows
-        return
+        return False
     # it came from search, so Yahoo knows it as-is: ASML on NASDAQ is a real listing, even though a
     # euro pie's suffix check would prefer ASML.AS
     st.session_state.verified_tickers.add(symbol)
@@ -355,6 +355,14 @@ def add_asset(symbol: str, name: str):
     total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
     st.session_state.pie.append({"Ticker": symbol, "Name": name, "Weight %": round(max(100.0 - total, 0.0), 2)})
     pie_changed()
+    return True
+
+
+def add_from_search(symbol, name):
+    """"Add to pie". The search box isn't cleared: clearing it during the rerun could wipe what someone
+    starts typing next. The button turns into "Added ✓" instead, and a toast confirms."""
+    if add_asset(symbol, name):
+        flash("toast", f"Added {md(symbol)}.")
 
 
 def split_evenly():
@@ -723,8 +731,6 @@ with st.container(border=True):
     left, right = st.columns([3, 2], gap="large")
     with left:
         # assets come only from search, so every ticker is a real Yahoo listing
-        if st.session_state.pop("clear_search", False):
-            st.session_state.search_q = ""  # after "Add to pie", so it's clear the asset went in
         q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed", key="search_q",
                           placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL").strip()
         if q:
@@ -736,10 +742,11 @@ with st.container(border=True):
                 labels = [f"{h['symbol']} — {h['name']} · {h['exchange']} · {h['currency']}"
                           + ("" if h["type"] in ("ETF", "EQUITY") else f" · {h['type'].lower()}") for h in hits]
                 choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
-                if st.button("Add to pie", type="primary"):
-                    add_asset(hits[choice]["symbol"], hits[choice]["name"])
-                    st.session_state.clear_search = True
-                    st.rerun()
+                # a callback with the listing bound now: a click that lands while the page is still redrawing
+                # adds exactly what was shown, instead of whatever the next rerun's results are
+                added = any(a["Ticker"] == hits[choice]["symbol"] for a in st.session_state.pie)
+                st.button("Added ✓" if added else "Add to pie", type="primary", disabled=added,
+                          on_click=add_from_search, args=(hits[choice]["symbol"], hits[choice]["name"]))
 
         if not st.session_state.pie:
             st.info("Your pie is empty. Pick one from Examples at the top, or search for an asset.")
