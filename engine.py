@@ -193,6 +193,58 @@ def _period_starts(index: pd.DatetimeIndex, freq: str | None) -> set:
     return set(firsts.iloc[1:])  # skip the very first period (that's the initial buy)
 
 
+PERIOD_PRESETS = ("1Y", "3Y", "5Y", "10Y", "Max")
+# how compared pies start when an asset lists after From: all on the same day (the latest first price),
+# each on its own first price, or all on From with a later asset's slice held as cash
+START_RULES = ("common", "own", "cash")
+
+
+def period_start(preset: str, today, earliest):
+    """The From date a period preset sets: today minus n years (29 Feb becomes 28 Feb), or for Max the
+    earliest price of any loaded asset. None when there's nothing to set (Max with no pie loaded)."""
+    if preset == "Max":
+        return earliest
+    return (pd.Timestamp(today) - pd.DateOffset(years=int(preset[:-1]))).date()
+
+
+def first_full_day(prices: pd.DataFrame, start):
+    """The first day on or after start on which every column has a price, or None."""
+    full = prices.loc[pd.Timestamp(start):].dropna(how="any")
+    return full.index[0] if not full.empty else None
+
+
+def start_days(first_days: dict, rule: str) -> dict:
+    """The day each pie starts on: the latest first day for every pie with the common rule, otherwise
+    each pie's own (with cash, that's From for every pie)."""
+    if rule == "common" and first_days:
+        latest = max(first_days.values())
+        return {name: latest for name in first_days}
+    return dict(first_days)
+
+
+BEST = ("final_value", "twr_total", "cagr", "max_drawdown")  # higher is better, also for the (negative) worst fall
+
+
+def best_marks(by_pie: dict[str, dict]) -> dict[str, set]:
+    """For each pie, the metrics it's best at among the pies; nothing with fewer than two pies."""
+    marks = {name: set() for name in by_pie}
+    if len(by_pie) < 2:
+        return marks
+    for key in BEST:
+        values = {n: m[key] for n, m in by_pie.items() if not pd.isna(m[key])}
+        if values:
+            marks[max(values, key=values.get)].add(key)
+    return marks
+
+
+def window_label(first, last) -> str:
+    """'29 Jul 2019 – 23 Oct 2026 · 7.2 yrs', or '· 5 months' under a year."""
+    first, last = pd.Timestamp(first), pd.Timestamp(last)
+    years = (last - first).days / 365.25
+    length = f"{years:.1f} yrs" if years >= 1 else f"{round(years * 12)} months"
+    return f"{first.day} {first:%b %Y} – {last.day} {last:%b %Y} · {length}"
+
+
 def first_price_dates(prices: pd.DataFrame, start) -> pd.Series:
     return prices.loc[pd.Timestamp(start):].apply(lambda s: s.first_valid_index())
 
@@ -210,8 +262,9 @@ def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial
     - Monthly contribution is invested on the first trading day of each month,
       split by target weights (like Trading 212 auto-invest).
     - Optional rebalancing back to target weights at the start of each period.
-    - before_listing="cash": an asset without prices yet keeps its slice as cash
-      (0% return) and buys in on its first trading day.
+    - before_listing="cash": the pie starts on the first business day on or after start, even before
+      any asset has a price; an asset without prices yet keeps its slice as cash (0% return) and
+      buys in on its first trading day.
     - Fractional shares, no fees, dividends reinvested (adjusted prices).
     """
     w = pd.Series(weights, dtype=float)
@@ -220,6 +273,8 @@ def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial
     px = px.dropna(how="any") if before_listing == "wait" else px.dropna(how="all")
     if px.empty:
         raise ValueError("No price data for these assets from the chosen start date.")
+    if before_listing == "cash":  # all cash from the asked start until the first price
+        px = px.reindex(px.index.union(pd.bdate_range(pd.Timestamp(start), px.index[0], inclusive="left")))
 
     idx = px.index
     month_starts = _period_starts(idx, "M")

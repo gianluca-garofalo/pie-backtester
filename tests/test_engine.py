@@ -202,3 +202,66 @@ def test_no_infinite_return_before_the_first_deposit():
     assert np.isfinite(res["daily_r"]).all()
     assert all(np.isfinite(m[k]) for k in ("twr_total", "max_drawdown", "volatility"))
     assert m["twr_total"] > 0  # the prices only rose
+
+
+# ---------- periods, start days, best marks ----------
+
+from datetime import date
+
+
+def test_period_start_presets():
+    today = date(2026, 10, 23)
+    assert engine.period_start("1Y", today, None) == date(2025, 10, 23)
+    assert engine.period_start("3Y", today, None) == date(2023, 10, 23)
+    assert engine.period_start("10Y", today, None) == date(2016, 10, 23)
+    assert engine.period_start("5Y", date(2024, 2, 29), None) == date(2019, 2, 28)
+    assert engine.period_start("Max", today, date(2004, 3, 1)) == date(2004, 3, 1)
+    assert engine.period_start("Max", today, None) is None  # no pie loaded: From stays as it is
+
+
+def _late_prices():
+    days = pd.bdate_range("2020-01-01", "2020-06-30")
+    a = pd.Series(100.0, index=days)
+    b = pd.Series(50.0, index=days).where(days >= "2020-03-02")  # lists later
+    return pd.DataFrame({"A": a, "B": b})
+
+
+def test_first_full_day_waits_for_every_column():
+    prices = _late_prices()
+    assert engine.first_full_day(prices, "2020-01-01") == pd.Timestamp("2020-03-02")
+    assert engine.first_full_day(prices, "2020-04-04") == pd.Timestamp("2020-04-06")  # a Saturday → Monday
+    assert engine.first_full_day(prices, "2021-01-01") is None
+
+
+def test_start_days_common_and_own():
+    days = {"a": pd.Timestamp("2018-01-02"), "b": pd.Timestamp("2019-07-29")}
+    assert engine.start_days(days, "common") == {"a": pd.Timestamp("2019-07-29"), "b": pd.Timestamp("2019-07-29")}
+    assert engine.start_days(days, "own") == days
+    assert engine.start_days(days, "cash") == days
+
+
+def test_best_marks_need_two_pies_and_skip_nan():
+    m = {
+        "x": {"final_value": 17.0, "twr_total": 1.35, "cagr": 0.126, "max_drawdown": -0.334},
+        "y": {"final_value": 14.1, "twr_total": 0.75, "cagr": np.nan, "max_drawdown": -0.22},
+        "z": {"final_value": 25.6, "twr_total": 4.15, "cagr": 0.254, "max_drawdown": -0.297},
+    }
+    assert engine.best_marks(m) == {"x": set(), "y": {"max_drawdown"}, "z": {"final_value", "twr_total", "cagr"}}
+    assert engine.best_marks({"x": m["x"]}) == {"x": set()}
+
+
+def test_window_label():
+    assert engine.window_label(pd.Timestamp("2019-07-29"), pd.Timestamp("2026-10-23")) == \
+        "29 Jul 2019 – 23 Oct 2026 · 7.2 yrs"
+    assert engine.window_label(pd.Timestamp("2026-05-01"), pd.Timestamp("2026-10-23")) == \
+        "1 May 2026 – 23 Oct 2026 · 6 months"
+
+
+def test_cash_rule_holds_cash_from_the_asked_start():
+    prices = _late_prices()[["B"]]
+    res = engine.simulate_pie(prices, {"B": 100}, "2020-01-01", 1000, 100, before_listing="cash")
+    assert res["total"].index[0] == pd.Timestamp("2020-01-01")
+    before = res["total"].loc[:"2020-02-28"]
+    assert before.loc[:"2020-01-31"].eq(1000).all() and before.loc["2020-02-03":].eq(1100).all()  # cash, flat
+    assert res["invested"].iloc[-1] == 1000 + 100 * 5  # Feb–Jun deposits
+    assert res["units"]["B"] == pytest.approx(1200 / 50 + 300 / 50)  # cash and the March deposit buy in on 2 Mar, then Apr–Jun
