@@ -532,3 +532,20 @@ def test_delete_can_be_undone(app):
     expect(app.saved_row("E2E undo")).to_have_count(1)  # back in My pies
     expect(app.page.locator(".st-key-status_own")).to_have_text("Saved")  # and the open pie is saved again
     app.delete_saved("E2E undo")
+
+
+def test_paste_a_list_without_keyboard_shortcuts(app):
+    # typed, then a button: Ctrl+Enter isn't obvious (and an editor's browser may take it), and nothing
+    # showed until the box lost focus
+    app.load_example("Tech Leaders")
+    editor = app.open_editor()
+    editor.get_by_text("Paste a list").click()
+    box = editor.get_by_role("textbox", name="One ticker and weight per line")
+    box.click()
+    app.page.keyboard.type("VWCE.DE 60")
+    app.page.keyboard.press("Enter")
+    app.page.keyboard.type("AAPL 40")
+    editor.get_by_role("button", name="Check list").click()
+    app.wait()
+    app.click("Replace rows", root=editor)
+    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]

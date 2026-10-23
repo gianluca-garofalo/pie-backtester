@@ -973,9 +973,10 @@ def editor_body():
             text = st.text_area("One ticker and weight per line", key="draft_paste",
                                 placeholder="VWCE.DE 60\nAGGH.L 40",
                                 help="Rows copied from a spreadsheet work too: a ticker column and a weight column.")
+            found = []
             if text.strip():
                 pairs, unread = editing.parse_paste(text)
-                found, preview = [], []
+                preview = []
                 with st.spinner("Looking up tickers…"):
                     for t, w in pairs:
                         hit = find_listing(t, base_ccy)
@@ -988,9 +989,12 @@ def editor_body():
                                  column_config={"Weight %": st.column_config.NumberColumn(format="%.2f")})
                 if unread:
                     st.caption("Couldn't read " + "; ".join(md(b) for b in unread) + ".")
-                with st.container(horizontal=True):
-                    st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, True))
-                    st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, False))
+            # always there: the list was only read once the box lost focus (or on Ctrl+Enter, which a browser
+            # inside an editor may take), so typing showed nothing and offered nothing to press
+            with st.container(horizontal=True):
+                st.button("Check list", help="Looks up each ticker. Nothing changes until Replace rows or Add to rows.")
+                st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, True))
+                st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, False))
     with right:
         live = sorted([(a["Ticker"], a["Name"] or a["Ticker"], float(a["Weight %"] or 0)) for a in draft
                        if float(a["Weight %"] or 0) > 0], key=lambda r: -r[2])
