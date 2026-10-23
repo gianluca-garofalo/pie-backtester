@@ -390,3 +390,12 @@ def test_the_strip_shows_cash_days_apart(app):
     # All-World waits as cash from 1 Jan 2015 until VWCE.DE lists: it looked fully invested
     assert ["cash until listed", "2015-01-01", "dash"] in traces, traces
     expect(app.page.get_by_text("Dashed: the results use these days, but a slice waits as cash.")).to_be_visible()
+
+
+def test_the_strip_starts_with_the_period(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2018-01-01")  # Tech Leaders has prices from Dec 2015: the strip still starts at From
+    plot = app.page.locator(".st-key-period .js-plotly-plot")
+    assert plot.evaluate("e => String(e.layout.xaxis.range[0]).slice(0, 10)") == "2018-01-01"
+    expect(plot.get_by_text("From", exact=True)).to_have_count(0)  # no marker: the strip is the period

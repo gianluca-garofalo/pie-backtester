@@ -1189,13 +1189,12 @@ def faded(color, alpha=.35):
 
 
 def coverage_figure(names):
-    """One bar per pie over its own history, not only the period: dotted grey before every asset has prices,
-    faded colour where it has them but the results don't use the days (before From, or waiting to start with
-    the others), solid colour for the days the results use. The axis starts at the earliest pie's first full
-    day when that's before From, which is marked. Returns (figure, key sentence)."""
+    """One bar per pie over the period: dotted grey before every asset has prices, dashed in its colour where a
+    slice waits as cash, faded colour where it has every price but the results don't use the days (waiting to
+    start with the others), solid colour for the days the results use. Returns (figure, key sentence)."""
     fig = go.Figure()
     t_from, t1 = pd.Timestamp(start), pd.Timestamp(end)
-    t0 = min([t_from] + [history[n][0] for n in names if n in history and history[n][0] is not None])
+    t0 = t_from  # the strip follows the period (the user preferred it to starting at the earliest price)
     labels = []
     for row, n in enumerate(names):  # one numbered row per pie: two cut names can be the same
         name = plain_name(n)
@@ -1221,14 +1220,11 @@ def coverage_figure(names):
                                text=f"cash until {html.escape(ticker)} lists", font=dict(size=10, color="#5f636e"))
             used = cash_until  # solid from the day every asset is bought
         if used is not None:
-            if full is not None and full + pd.Timedelta(days=3) < used:
-                fig.add_trace(go.Scatter(x=[full, used], y=[row] * 2, mode="lines", name="has prices, not used",
+            if full is not None and max(full, t0) + pd.Timedelta(days=3) < used:
+                fig.add_trace(go.Scatter(x=[max(full, t0), used], y=[row] * 2, mode="lines", name="has prices, not used",
                                          line=dict(color=faded(pie_colors[n]), width=10)))
             fig.add_trace(go.Scatter(x=[used, t1], y=[row] * 2, mode="lines", name="used",
                                      line=dict(color=pie_colors[n], width=10)))
-    if t0 < t_from:  # the period starts later than the strip
-        fig.add_vline(x=t_from, line=dict(color="#8a8d96", width=1, dash="dot"))
-        fig.add_annotation(x=t_from, y=-0.6, showarrow=False, text="From", font=dict(size=10, color="#5f636e"))
     fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
                       yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels),
                       xaxis=dict(range=[t0, t1]))
