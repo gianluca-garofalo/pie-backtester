@@ -1006,16 +1006,21 @@ if st.session_state.compare and len(results) > 1:
     table = engine.comparison_table(results)
     same_invested = table["Invested"].round(2).nunique() == 1
     shown = table[["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"]
-                  + ([] if same_invested else ["Invested"])]
+                  + ([] if same_invested else ["Invested"])].copy()
     best = {"Final value": "max", "Return %": "max", "CAGR %": "max", "Max drawdown %": "max", "Volatility %": "min"}
+    # a pie that joined later covers a shorter period, so its return figures don't compete for "best"
+    later_rows = shown["Pie"].isin(joined)
+    row_colors = [colors.get(n, "#8a8d96") for n in shown["Pie"]]
+    shown["Pie"] = [f"{n} †" if n in joined else n for n in shown["Pie"]]
 
     def emphasis(df):
         """Each pie's name in its colour; the best value in each column in bold."""
         css = pd.DataFrame("", index=df.index, columns=df.columns)
         for col, how in best.items():
-            if df[col].notna().any():
-                css.loc[getattr(df[col], f"idx{how}")(), col] = "font-weight: 700"
-        css["Pie"] = [f"color: {colors.get(n, '#8a8d96')}; font-weight: 600" for n in df["Pie"]]
+            ranked = df[col] if col == "Final value" or later_rows.all() else df[col][~later_rows]
+            if ranked.notna().sum() > 1:  # "best" needs at least two pies to compare
+                css.loc[getattr(ranked, f"idx{how}")(), col] = "font-weight: 700"
+        css["Pie"] = [f"color: {c}; font-weight: 600" for c in row_colors]
         return css
 
     pct = lambda v: "—" if pd.isna(v) else f"{v:+.1f}%"  # noqa: E731
@@ -1031,6 +1036,9 @@ if st.session_state.compare and len(results) > 1:
             "Max drawdown %": st.column_config.Column("Worst fall", help="Largest drop from a previous high"),
             "Volatility %": st.column_config.Column("Volatility", help="How much it swings, per year"),
         })
-    st.caption("Bold: best in the column." +
-               (f" Every pie had {money(table['Invested'].iloc[0], base_ccy)} put in." if same_invested else "") +
-               " All pies use the sidebar settings; a pie whose assets list later starts later (see From).")
+    st.caption(md("Bold: best in the column."
+                  + (f" Every pie had {money(table['Invested'].iloc[0], base_ccy)} put in." if same_invested else "")
+                  + " All pies use the sidebar settings; a pie whose assets list later starts later (see From).")
+               + (" " + md("† Started later, with the average value of the pies that started earlier: its Value "
+                           "includes their gains until then, and its Return, Per year, Worst fall and Volatility "
+                           "cover a shorter period, so they aren't marked best.") if later_rows.any() else ""))

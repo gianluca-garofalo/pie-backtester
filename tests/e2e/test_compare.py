@@ -73,11 +73,12 @@ def test_a_pie_with_later_assets_starts_later(app):
     app.load_example("All-World ETF")
     app.set_date("From", "2015-01-01")
     app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
-                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
+                   {"All-World ETF (editing) †": "2019-07-29", "Tech Leaders": "2015-12-03"})  # † joined later
     expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()
     # All-World lists later than Tech Leaders, so it starts with Tech Leaders' value on that day
     expect(app.page.get_by_text("'All-World ETF (editing)' starts on 2019-07-29 (VWCE.DE has no earlier prices) with $")).to_be_visible()
     expect(app.page.get_by_text("Every pie had")).to_be_visible()  # the same amount put in
+    expect(app.page.get_by_text("† Started later, with the average value")).to_be_visible()
     # the tiles say which pie they're about
     expect(app.page.get_by_text("(the pie you're editing)")).to_be_visible()
 
