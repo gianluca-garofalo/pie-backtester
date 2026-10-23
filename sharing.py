@@ -81,23 +81,42 @@ def encode_share_link(pie_data: dict[str, Any]) -> str:
     return quote_plus("~".join(fields), safe="~:,-.")
 
 
-def decode_share_link(value: str) -> dict[str, Any] | None:
-    """A normalized pie from a ?p= value as the app receives it (already URL-decoded), or None."""
-    if not value or not isinstance(value, str) or len(value) > MAX_SHARE_URL_PARAM_LEN:
-        return None
+def read_share_link(value: str) -> tuple[dict[str, Any] | None, str]:
+    """(pie, "") from a ?p= value as the app receives it (already URL-decoded), or (None, why not).
+
+    A pie whose weights don't add up to 100% still opens: the table's total line and Scale to 100%
+    can fix it, which is friendlier than refusing the whole link.
+    """
+    if not value or not isinstance(value, str):
+        return None, "it's empty"
+    if len(value) > MAX_SHARE_URL_PARAM_LEN:
+        return None, "it's too long"
     parts = value.rsplit("~", SHARE_FIELDS - 1)
     if len(parts) != SHARE_FIELDS:
-        return None
+        return None, "it looks cut off: some of its parts are missing"
     name, currency, start, end, initial, monthly, rebalance, before, assets = parts
     try:
-        data = {
-            "name": name, "currency": currency, "start": start or None, "end": end or None,
-            "initial": float(initial), "monthly": float(monthly),
-            "rebalance": {v: k for k, v in REBALANCE_CODES.items()}[rebalance],
-            "before_listing": {v: k for k, v in BEFORE_LISTING_CODES.items()}[before],
-            "assets": [{"ticker": t, "weight": float(w)} for t, w in (a.rsplit(":", 1) for a in assets.split(","))],
-        }
-    except (KeyError, ValueError):
-        return None
-    is_valid, _ = validate_pie(data)
-    return normalize_pie(data) if is_valid else None
+        amounts = {"initial": float(initial), "monthly": float(monthly)}
+    except ValueError:
+        return None, "its amounts aren't numbers"
+    rebalances = {v: k for k, v in REBALANCE_CODES.items()}
+    if rebalance not in rebalances:
+        return None, f"it has an unknown rebalance code {rebalance!r}"
+    befores = {v: k for k, v in BEFORE_LISTING_CODES.items()}
+    if before not in befores:
+        return None, f"it has an unknown code {before!r} for assets that list later"
+    try:
+        holdings = [{"ticker": t, "weight": float(w)} for t, w in (a.rsplit(":", 1) for a in assets.split(","))]
+    except ValueError:
+        return None, "its assets aren't in the form TICKER:weight"
+    data = {"name": name, "currency": currency, "start": start or None, "end": end or None, **amounts,
+            "rebalance": rebalances[rebalance], "before_listing": befores[before], "assets": holdings}
+    is_valid, err = validate_pie(data, whole=False)
+    if not is_valid:
+        return None, err[0].lower() + err[1:]
+    return normalize_pie(data, whole=False), ""
+
+
+def decode_share_link(value: str) -> dict[str, Any] | None:
+    """A normalized pie from a ?p= value, or None (see read_share_link for the reason)."""
+    return read_share_link(value)[0]

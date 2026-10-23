@@ -188,7 +188,7 @@ def test_older_long_share_links_still_open(app):
 
 def test_broken_share_link_says_so(app):
     app.open("?pie=not-a-real-pie")
-    expect(app.page.get_by_text("This share link is invalid or damaged")).to_be_visible()
+    expect(app.page.get_by_text("This share link can't be opened: it's damaged.")).to_be_visible()
     expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
 
 
@@ -425,3 +425,11 @@ def test_a_very_long_name_keeps_the_chip_on_one_line(app):
     close = app.page.locator("[class*='st-key-chip_x_'] button").filter(visible=True).first.bounding_box()
     assert abs(name["y"] - close["y"]) < 20  # the ✕ used to wrap onto a second line
     assert app.page.locator(".st-key-chip_own").bounding_box()["width"] < 700  # not stretched across the page
+
+
+def test_links_say_why_they_cant_open_and_unfinished_ones_open(app):
+    app.open("?p=Mine~XYZ~2020-01-01~~1000~100~N~w~VWCE.DE:100")
+    expect(app.page.get_by_text("This share link can't be opened: unknown currency 'XYZ'")).to_be_visible()
+    app.open("?p=Mine~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:60,EUNA.DE:30")  # 90%: opens, ready to fix
+    assert app.tickers() == ["VWCE.DE", "EUNA.DE"]
+    expect(app.page.get_by_text("Total 90.00% · 10.00% left")).to_be_visible()

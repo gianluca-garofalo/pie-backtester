@@ -279,14 +279,17 @@ if "loaded_query_pie" not in st.session_state:
     st.session_state.loaded_query_pie = True
     qp_short, qp_pie = st.query_params.get("p"), st.query_params.get("pie")
     if qp_short or qp_pie:
-        decoded = sharing.decode_share_link(qp_short) if qp_short else sharing.decode_pie_from_query_param(qp_pie)
+        if qp_short:
+            decoded, why = sharing.read_share_link(qp_short)
+        else:  # older links
+            decoded, why = sharing.decode_pie_from_query_param(qp_pie), "it's damaged"
         if decoded:
             for a in decoded["assets"]:
                 if a["name"] == a["ticker"]:  # short links leave names out
                     a["name"] = engine.asset_name(a["ticker"])
             load_pie(decoded)
         else:
-            flash("error", "This share link is invalid or damaged, so no pie was loaded.")
+            flash("error", f"This share link can't be opened: {md(why)}. No pie was loaded.")
 
 for _key, _value in st.session_state.pop("pending_settings", {}).items():
     st.session_state[_key] = _value

@@ -38,7 +38,7 @@ def test_decode_rejects_oversized_payload():
 # --- short ?p= links ---
 from urllib.parse import parse_qs
 
-from sharing import encode_share_link, decode_share_link
+from sharing import encode_share_link, decode_share_link, read_share_link
 
 TECH = {"name": "Tech & Co ~ 50/50", "currency": "USD", "start": "2020-01-01", "end": None,
         "initial": 1000.0, "monthly": 100.0, "rebalance": "Quarterly", "before_listing": "cash",
@@ -75,3 +75,20 @@ def test_broken_short_links_are_rejected(bad):
 def test_a_link_with_thirds_opens():
     pie = decode_share_link(opened("Thirds~EUR~2020-01-01~~1000~0~N~w~AAPL:33.33,MSFT:33.33,GOOGL:33.33"))
     assert pie and [a["weight"] for a in pie["assets"]] == [33.33, 33.33, 33.33]
+
+
+@pytest.mark.parametrize("value, why", [
+    ("a~b~c", "cut off"),
+    ("N~EUR~2020-01-01~~lots~100~N~w~VWCE.DE:100", "amounts aren't numbers"),
+    ("N~EUR~2020-01-01~~1000~100~X~w~VWCE.DE:100", "unknown rebalance code 'X'"),
+    ("N~XYZ~2020-01-01~~1000~100~N~w~VWCE.DE:100", "unknown currency 'XYZ'"),
+    ("N~EUR~2020-01-01~~1000~100~N~w~VWCE.DE", "TICKER:weight"),
+])
+def test_broken_links_say_why(value, why):
+    pie, reason = read_share_link(value)
+    assert pie is None and why in reason
+
+
+def test_a_link_whose_weights_are_off_still_opens():
+    pie, reason = read_share_link("Mine~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:60,EUNA.DE:30")  # 90%
+    assert reason == "" and [a["weight"] for a in pie["assets"]] == [60, 30]
