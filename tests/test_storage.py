@@ -120,7 +120,7 @@ def test_local_overwrite_keeps_the_id(tmp_path):
     assert [p["assets"][0]["ticker"] for p in store.list_pies()] == ["EUNA.DE"]  # replaced, not added
 
 
-@pytest.mark.parametrize("bad", ["lots", [], {}, "nan", float("inf")])
+@pytest.mark.parametrize("bad", ["lots", [], {}, "nan", float("inf"), True, False])
 def test_amounts_must_be_numbers(bad):
     pie = {"initial": bad, "assets": [{"ticker": "AAPL", "weight": 100}]}
     ok, err = validate_pie(pie)
@@ -166,3 +166,7 @@ def test_an_unfinished_pie_can_be_opened_but_not_saved():
     assert not validate_pie(pie)[0]
     assert validate_pie(pie, whole=False)[0]
     assert sum(a["weight"] for a in normalize_pie(pie, whole=False)["assets"]) == 70
+
+
+def test_a_weight_of_true_is_refused():
+    assert not validate_pie({"assets": [{"ticker": "A", "weight": True}]}, whole=False)[0]

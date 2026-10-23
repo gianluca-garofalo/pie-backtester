@@ -78,8 +78,11 @@ def validate_pie(data: dict[str, Any], whole: bool = True) -> tuple[bool, str]:
         if not ticker or not isinstance(ticker, str) or not ticker.strip():
             return False, f"Asset at index {idx} is missing a valid ticker"
 
+        raw_w = asset.get("weight", asset.get("Weight %", 0.0))
         try:
-            w = float(asset.get("weight", asset.get("Weight %", 0.0)))
+            if isinstance(raw_w, bool):  # float(True) is 1.0
+                raise TypeError
+            w = float(raw_w)
         except (ValueError, TypeError):
             return False, f"Asset '{ticker}' has an invalid weight"
 
@@ -97,6 +100,8 @@ def validate_pie(data: dict[str, Any], whole: bool = True) -> tuple[bool, str]:
         if data.get(key) is None:
             continue
         try:
+            if isinstance(data[key], bool):  # float(True) is 1.0: "monthly": true isn't €1
+                raise TypeError
             amount = float(data[key])
         except (ValueError, TypeError):
             return False, f"'{key}' must be a number (got {data[key]!r})"
