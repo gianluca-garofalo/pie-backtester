@@ -358,3 +358,13 @@ def test_rename_cannot_take_another_pies_name(app):
     app.open_sidebar_section("Saved pies")
     app.choose("Saved pies", "E2E dup A (1 asset)")
     app.click("Delete", root=app.sidebar, exact=True)
+
+
+def test_adding_an_asset_twice_says_so(app):
+    app.load_example("Tech Leaders")
+    app.page.get_by_label("Search by name, ticker or ISIN").fill("AAPL")
+    app.page.keyboard.press("Enter")
+    app.wait()
+    app.click("Add to pie")
+    expect(app.page.get_by_text("AAPL is already in the pie.")).to_be_visible()
+    assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]

@@ -240,7 +240,7 @@ for _key, _value in st.session_state.pop("pending_settings", {}).items():
 
 def add_asset(symbol: str, name: str):
     if any(a["Ticker"] == symbol for a in st.session_state.pie):
-        st.toast(f"{symbol} is already in the pie")
+        flash("toast", f"{md(symbol)} is already in the pie.")  # a plain toast is lost in the rerun that follows
         return
     # the new asset gets what's left to reach 100%, so the weights already set stay as they are
     total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
