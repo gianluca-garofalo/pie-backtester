@@ -614,3 +614,22 @@ def test_urls_in_names_and_crafted_tickers_stay_text(app):
     editor = app.open_editor()
     expect(editor.locator(".katex, a[href*='e.com']")).to_have_count(0)
     expect(editor.get_by_test_id("stAlert").filter(has_text="no exchange suffix")).to_contain_text("<I>MSFT</I> $X$ **Y**")
+
+
+def test_quick_adds_all_land(app):
+    # five assets added one after another at a quick human pace all land. (With no pause at all, about 3 in
+    # 10 runs lost one: Streamlit drops a click when the next search arrives within some 50 ms; nobody types
+    # a ticker that fast.)
+    for attempt in range(3):
+        app.open()
+        editor = app.open_editor()
+        for t in ["AAPL", "MSFT", "NVDA", "GOOG", "TSLA"]:
+            box = editor.get_by_role("textbox", name="Search by name, ticker or ISIN")
+            box.click()
+            box.fill(t)
+            box.press("Enter")
+            editor.get_by_role("button", name="Add to pie").click(timeout=60_000)
+            app.page.wait_for_timeout(300)  # moving back to the search box
+        app.wait()
+        app.eventually(app.tickers, ["AAPL", "MSFT", "NVDA", "GOOG", "TSLA"])
+
