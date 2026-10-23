@@ -841,19 +841,26 @@ if results:
         deposits = int((res["invested"].diff() > 0).sum())
         gain = m["profit"]
         with st.container(horizontal=True):
+            # the gain on money put in is what an account shows; Return (time-weighted) is the pie's own growth
+            on_put_in = f" · {gain / m['invested'] * 100:+.0f}% on money put in" if m["invested"] > 0 else ""
             st.metric("Value now", money(m["final_value"], ccy, True), border=True, height="stretch",
-                      delta=f"{'-' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}",
+                      delta=f"{'-' if gain < 0 else '+'}{money(abs(gain), ccy, True)} {'loss' if gain < 0 else 'gain'}"
+                            + on_put_in,
                       chart_data=res["total"].resample("W").last().tolist(), chart_type="area",
-                      help=f"What the pie is worth on {res['total'].index[-1].date()}.")
+                      help=f"What the pie is worth on {res['total'].index[-1].date()}. The gain is the value minus "
+                           "everything you put in, also shown as a percentage of it.")
             st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
                       delta=f"{money(res['invested'].iloc[0], ccy, True)} + {deposits} deposits",
                       delta_color="off", delta_arrow="off")
             st.metric("Return", f"{m['twr_total'] * 100:+.1f}%", border=True, height="stretch",
-                      delta="time-weighted", delta_color="off", delta_arrow="off",
-                      help="How the pie itself performed, ignoring when the deposits were made.")
-            st.metric("Per year", "—" if pd.isna(m["cagr"]) else f"{m['cagr'] * 100:+.1f}%", border=True, height="stretch",
-                      delta="CAGR", delta_color="off", delta_arrow="off",
-                      help="The average yearly growth of the pie (compound annual growth rate). Needs a year of data.")
+                      delta="the pie's own growth", delta_color="off", delta_arrow="off",
+                      help="How the pie itself grew, as if all the money had been in from the start (time-weighted). "
+                           "It's higher or lower than the gain on money put in, under Value now, because money "
+                           "added later had less time to grow or fall.")
+            short = pd.isna(m["cagr"])
+            st.metric("Per year", "n/a" if short else f"{m['cagr'] * 100:+.1f}%", border=True, height="stretch",
+                      delta="needs a year of data" if short else "on average", delta_color="off", delta_arrow="off",
+                      help="The steady yearly growth that gives the same Return (compound annual growth rate, CAGR).")
             st.metric("Worst fall", f"{m['max_drawdown'] * 100:.1f}%".replace("-", "−"), border=True, height="stretch",
                       delta=f"lowest on {dd_own.idxmin().date()}", delta_color="off", delta_arrow="off",
                       help=f"The largest drop from a previous high. Volatility: {m['volatility'] * 100:.1f}% a year.")

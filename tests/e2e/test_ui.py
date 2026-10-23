@@ -372,3 +372,10 @@ def test_adding_an_asset_twice_says_so(app):
     app.click("Add to pie")
     expect(app.page.get_by_text("AAPL is already in the pie.")).to_be_visible()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
+
+
+def test_value_now_shows_the_gain_on_money_put_in(app):
+    app.load_example("All-World ETF")
+    tile = app.page.get_by_test_id("stMetric").filter(has_text="Value now")
+    expect(tile).to_contain_text("% on money put in")
+    expect(app.page.get_by_test_id("stMetric").filter(has_text="Return")).to_contain_text("the pie's own growth")

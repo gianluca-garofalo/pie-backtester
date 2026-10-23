@@ -7,7 +7,8 @@
 | **Value now** | $V_T$ | what the pie is worth on the last day |
 | **You put in** | $C_T = I + nM$ | the initial amount plus $n$ monthly deposits |
 | **Gain** | $V_T - C_T$ | the value minus what you put in |
-| **Return** (time-weighted) | $R = \prod_t (1 + r_t) - 1$, with $r_t = \dfrac{V_t - D_t}{V_{t-1}} - 1$ | daily growth with that day's deposit $D_t$ taken out, so it measures the pie, not the timing of your deposits |
+| **Gain on money put in** | $(V_T - C_T) / C_T$ | the gain as a share of everything you put in: what an account shows |
+| **Return** (time-weighted) | $R = \prod_t (1 + r_t) - 1$, with $r_t = \dfrac{V_t - D_t}{V_{t-1}} - 1$ | daily growth with that day's deposit $D_t$ taken out, so it measures the pie, not the timing of your deposits. It differs from the gain on money put in: money added later had less time to grow or fall |
 | **Per year** (CAGR) | $(1 + R)^{1/Y} - 1$, with $Y = \text{days} / 365.25$ | the steady yearly rate that gives the same return; needs a year of data |
 | **Worst fall** (max drawdown) | $\min_t \left( G_t / \max_{s \le t} G_s - 1 \right)$, with $G_t = \prod_{s \le t} (1 + r_s)$ | the largest drop from a previous high, measured on growth so deposits can't hide it |
 | **Volatility** | $\sigma(r_t)\,\sqrt{252}$ | how much daily returns swing, scaled to a year of 252 trading days |
