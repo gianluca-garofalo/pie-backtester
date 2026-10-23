@@ -340,12 +340,15 @@ def add_to_comparison(cfg, color=None):
         weights[t] = weights.get(t, 0.0) + float(a["weight"])
         names.setdefault(t, name)
     weights = {t: w for t, w in weights.items() if w > 0}
-    if any(e["weights"] == weights for e in others):
-        return  # already compared
+    if same := next((e for e in others if e["weights"] == weights), None):
+        flash("toast", f"This pie is already in the comparison as '{md(same['name'])}'.")
+        return
     taken = {e["name"] for e in others}
-    name, n = cfg.get("name") or "Pie", 2
-    while name in taken:
-        name, n = f"{cfg.get('name') or 'Pie'} ({n})", n + 1
+    base = cfg.get("name") or "Pie"
+    name, n = base, 2
+    while name in taken:  # "X (2)", or "X (copy 2)" for copies
+        name = f"{base[:-1]} {n})" if base.endswith(" (copy)") else f"{base} ({n})"
+        n += 1
     color = color or free_color({e.get("color") for e in others} | {st.session_state.own_color})
     others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color})
 
@@ -662,7 +665,7 @@ with st.container(border=True):
                     st.rerun()
                 if st.button("Compare a copy", disabled=not storage.adds_up(total_w),
                              help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
-                    add_to_comparison({"name": st.session_state.pie_name, "assets": [
+                    add_to_comparison({"name": f"{st.session_state.pie_name} (copy)", "assets": [
                         {"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                         for a in st.session_state.pie]})
                     st.rerun()

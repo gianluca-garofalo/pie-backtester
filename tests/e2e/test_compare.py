@@ -32,8 +32,11 @@ def test_snapshot_of_your_own_pie(app):
     app.load_example("Tech Leaders")
     app.click("Compare a copy")
     rows = comparison_rows(app)
-    assert [r[0] for r in rows] == ["Tech Leaders (editing)", "Tech Leaders"]
+    assert [r[0] for r in rows] == ["Tech Leaders (editing)", "Tech Leaders (copy)"]
     assert rows[0][1:] == rows[1][1:]  # an untouched copy performs exactly like your pie
+    app.page.get_by_role("button", name="Compare a copy").click()  # again: nothing new to compare
+    expect(app.page.get_by_text("This pie is already in the comparison as 'Tech Leaders (copy)'.")).to_be_visible()
+    app.wait()
 
     app.edit_weight(0, 70)  # weights now add up to 120%
     expect(app.page.get_by_text("Your pie appears here once")).to_be_visible()
@@ -43,7 +46,7 @@ def test_a_copy_keeps_the_fund_names(app):
     app.load_example("Tech Leaders")
     app.click("Compare a copy")
     app.click("Split evenly")  # make the two differ, so switching keeps both
-    app.open_pie("Tech Leaders")  # the copy
+    app.open_pie("Tech Leaders (copy)")
     assert [r[2] for r in app.rows()] == ["iShares S&P 500 Information Technology Sector UCITS ETF",
                                           "Apple Inc.", "Microsoft Corporation"]  # were the tickers
 
