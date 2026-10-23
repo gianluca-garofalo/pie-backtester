@@ -306,3 +306,17 @@ def test_a_file_with_text_for_an_amount_says_why(app, tmp_path):
     app.wait()
     expect(app.sidebar.get_by_text("Could not load this file: 'initial' must be a number")).to_be_visible()
     expect(app.page.get_by_test_id("stException")).to_have_count(0)  # no raw traceback
+
+
+def test_share_carries_the_latest_edit(app):
+    # the link used to be built before the table applied the edit, so it lagged one edit behind
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 70)
+    app.page.get_by_role("button", name="Share").click()
+    body = app.page.get_by_test_id("stPopoverBody")
+    expect(body.get_by_text("Can't share this pie yet: weights must sum to 100% (got 110.00%).")).to_be_visible()
+    app.page.keyboard.press("Escape")
+    app.edit_weight(1, 30)
+    app.page.get_by_role("button", name="Share").click()
+    link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
+    assert link.endswith("VWCE.DE:70,EUNA.DE:30")

@@ -463,7 +463,6 @@ with settings_box:
     before_listing = st.radio("Assets that list later", list(engine.BEFORE_LISTING),
                               format_func=engine.BEFORE_LISTING.get, key="before_listing")
 
-pie_data_raw = pie_payload() if st.session_state.pie else None
 examples = storage.list_examples()
 
 with pies_box:
@@ -509,17 +508,7 @@ with pies_box:
             st.caption("No saved pies yet. Use Save at the top to keep a pie.")
 
     with st.expander("Import / export JSON"):
-        if pie_data_raw:
-            try:
-                norm_export = storage.normalize_pie(pie_data_raw)
-                norm_export.pop("id")  # a fresh id is assigned when the file is saved somewhere
-                pie_json = json.dumps(norm_export, indent=2)
-            except Exception:
-                pie_json = json.dumps(pie_data_raw, indent=2)
-        else:
-            pie_json = ""
-        st.download_button("Download pie (.json)", pie_json, icon=":material/download:", file_name="my_pie.json", mime="application/json",
-                           disabled=not st.session_state.pie)
+        export_slot = st.empty()  # filled after the pie table, so the file has this run's edits
         uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
         if uploaded is not None:
             # opens as soon as it's picked; file_id keeps it from opening again on every rerun
@@ -553,18 +542,7 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
     if st.button("Save", icon=":material/save:", key="save_open", disabled=not can_save,
                  help=None if can_save or not st.session_state.pie else "Sign in to save pies."):
         save_dialog()
-    with st.popover("Share", icon=":material/share:", disabled=not pie_data_raw):
-        try:
-            if not pie_data_raw:
-                raise ValueError("build a pie first")
-            encoded_param = sharing.encode_share_link(pie_data_raw)
-            if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
-                st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
-            else:
-                st.code(f"{st.context.url or ''}?p={encoded_param}", language=None, wrap_lines=True)
-                st.caption("Copy this link to share your pie and its settings.")
-        except Exception as e:
-            st.caption(f"Cannot generate share link: {e}")
+    share_pop = st.popover("Share", icon=":material/share:", disabled=not st.session_state.pie)
 
 if "flash" in st.session_state:
     _kind, _msg = st.session_state.pop("flash")
@@ -694,6 +672,28 @@ with st.container(border=True):
             fig.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=320, showlegend=False,
                               annotations=[dict(text="Target", x=0.5, y=0.5, showarrow=False, font_size=16)])
             st.plotly_chart(fig)
+
+# ---------------- share link and file: built after the table, so they carry this run's edits ----------------
+pie_data_raw = pie_payload() if st.session_state.pie else None
+share_ok, share_err = storage.validate_pie(pie_data_raw) if pie_data_raw else (False, "build a pie first")
+with share_pop:
+    if not share_ok:
+        st.caption(f"Can't share this pie yet: {share_err[0].lower() + share_err[1:]}.")
+    else:
+        encoded_param = sharing.encode_share_link(pie_data_raw)
+        if len(encoded_param) > sharing.MAX_SHARE_URL_PARAM_LEN:
+            st.warning("Pie configuration is too large for a URL share link. Use 'Download pie (.json)' instead.")
+        else:
+            st.code(f"{st.context.url or ''}?p={encoded_param}", language=None, wrap_lines=True)
+            st.caption("Copy this link to share your pie and its settings.")
+if share_ok:
+    norm_export = storage.normalize_pie(pie_data_raw)
+    norm_export.pop("id")  # a fresh id is assigned when the file is saved somewhere
+    pie_json = json.dumps(norm_export, indent=2)
+else:
+    pie_json = json.dumps(pie_data_raw or {}, indent=2)  # an unfinished pie can still be kept as a file
+export_slot.download_button("Download pie (.json)", pie_json, icon=":material/download:", file_name="my_pie.json",
+                            mime="application/json", disabled=not st.session_state.pie)
 
 # ---------------- the pie strip: one chip per loaded pie, in its colour ----------------
 own_complete = bool(st.session_state.pie) and abs(total_w - 100) <= 0.01
