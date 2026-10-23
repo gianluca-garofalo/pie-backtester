@@ -91,10 +91,21 @@ def test_add_assets_by_search(app):
         app.click("Add to pie")
     assert len(app.rows()) == 2  # no empty "add row" line: assets only come from search
     assert app.tickers()[-1] == "EIMI.L"
-    assert [float(r[1]) for r in app.rows()] == [50, 50]
+    assert [float(r[1]) for r in app.rows()] == [100, 0]  # the second gets what's left: nothing
 
     app.click("Clear pie")
     expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+
+
+def test_an_added_asset_gets_the_rest_and_keeps_the_others(app):
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 50)  # 50 + 40 = 90%
+    app.page.get_by_label("Search by name, ticker or ISIN").fill("EIMI.L")
+    app.page.keyboard.press("Enter")
+    app.wait()
+    app.click("Add to pie")
+    assert [float(r[1]) for r in app.rows()] == [50, 40, 10]
+    expect(app.page.get_by_text("Total 100% ✓")).to_be_visible()
 
 
 def test_save_load_delete(app):

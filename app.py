@@ -222,8 +222,9 @@ def add_asset(symbol: str, name: str):
     if any(a["Ticker"] == symbol for a in st.session_state.pie):
         st.toast(f"{symbol} is already in the pie")
         return
-    st.session_state.pie.append({"Ticker": symbol, "Name": name, "Weight %": 0.0})
-    split_evenly()
+    # the new asset gets what's left to reach 100%, so the weights already set stay as they are
+    total = sum(float(a["Weight %"] or 0) for a in st.session_state.pie)
+    st.session_state.pie.append({"Ticker": symbol, "Name": name, "Weight %": round(max(100.0 - total, 0.0), 2)})
     pie_changed()
 
 
