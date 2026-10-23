@@ -46,9 +46,8 @@ def test_us_stocks_keep_their_us_listing(app):
 
 
 def test_ticker_that_would_change_needs_fix_tickers(app):
-    app.page.get_by_role("button", name="+ Ticker").click()
-    app.page.get_by_label("Yahoo ticker").fill("vwra")
-    app.click("Add", exact=True)
+    # tickers can't be typed in any more; bare ones still arrive from files and links
+    app.open("?p=Imported~EUR~2020-01-01~~1000~100~N~w~VWRA:100")
     expect(app.page.get_by_text("have no exchange suffix")).to_be_visible()
     assert not app.metrics()  # no silent swap to another listing
     app.click("Fix tickers")
@@ -84,16 +83,13 @@ def test_scale_to_100_keeps_the_proportions(app):
     assert app.metrics()
 
 
-def test_add_asset_by_search_and_directly(app):
-    app.page.get_by_label("Search by name, ticker or ISIN").fill("IE00BK5BQT80")
-    app.page.keyboard.press("Enter")
-    app.wait()
-    app.click("Add to pie")
-    assert len(app.rows()) == 1
-
-    app.page.get_by_role("button", name="+ Ticker").click()
-    app.page.get_by_label("Yahoo ticker").fill("eimi.l")
-    app.click("Add", exact=True)
+def test_add_assets_by_search(app):
+    for query in ("IE00BK5BQT80", "EIMI.L"):  # an ISIN, then a ticker
+        app.page.get_by_label("Search by name, ticker or ISIN").fill(query)
+        app.page.keyboard.press("Enter")
+        app.wait()
+        app.click("Add to pie")
+    assert len(app.rows()) == 2  # no empty "add row" line: assets only come from search
     assert app.tickers()[-1] == "EIMI.L"
     assert [float(r[1]) for r in app.rows()] == [50, 50]
 
@@ -284,14 +280,8 @@ def test_saving_under_the_same_name_updates_the_pie(app):
     app.click("Delete", root=app.sidebar, exact=True)
 
 
-def test_sort_the_assets(app):
-    app.load_example("Three-Fund Portfolio")
-    app.edit_weight(0, 20)
-    app.edit_weight(2, 40)  # weights now 20 / 20 / 40, and tickers SWRD.L, EIMI.L, EUNA.DE: neither sorted
-    app.page.get_by_role("button", name="Sort").click()
-    app.click("Weight, high to low")
-    weights = [float(r[1]) for r in app.rows()]
-    assert weights == sorted(weights, reverse=True)
-    app.page.get_by_role("button", name="Sort").click()
-    app.click("Ticker, A–Z")
-    assert app.tickers() == sorted(app.tickers())
+def test_click_a_column_name_to_sort(app):
+    app.load_example("Three-Fund Portfolio")  # SWRD.L, EIMI.L, EUNA.DE
+    box = app.grid.bounding_box()
+    app.page.mouse.click(box["x"] + 70, box["y"] + 17)  # the Ticker header
+    app.eventually(app.tickers, ["EIMI.L", "EUNA.DE", "SWRD.L"])

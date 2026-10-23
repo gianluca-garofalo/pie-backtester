@@ -217,18 +217,6 @@ def add_asset(symbol: str, name: str):
     pie_changed()
 
 
-SORTS = {  # label: key for sorted(); the table, donut and holdings follow the pie's order
-    "Weight, high to low": lambda a: -float(a["Weight %"] or 0),
-    "Ticker, A–Z": lambda a: a["Ticker"],
-    "Name, A–Z": lambda a: (a.get("Name") or a["Ticker"]).lower(),
-}
-
-
-def sort_pie(label):
-    st.session_state.pie = sorted(st.session_state.pie, key=SORTS[label])
-    pie_changed()
-
-
 def split_evenly():
     n = len(st.session_state.pie)
     if n:
@@ -578,14 +566,9 @@ strip = st.container()  # the pie chips; filled after the table so they see this
 with st.container(border=True):
     left, right = st.columns([3, 2], gap="large")
     with left:
-        c_search, c_ticker = st.columns([4, 1], vertical_alignment="bottom")
-        q = c_search.text_input("Search by name, ticker or ISIN", label_visibility="collapsed",
-                                placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL")
-        with c_ticker.popover("+ Ticker", width="stretch"):
-            manual = st.text_input("Yahoo ticker", placeholder="VWCE.DE")
-            if st.button("Add", width="stretch") and manual.strip():
-                add_asset(manual.strip().upper(), manual.strip().upper())
-                st.rerun()
+        # assets come only from search, so every ticker is a real Yahoo listing
+        q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed",
+                          placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL")
         if q:
             hits = cached_search(q)
             if not hits:
@@ -610,12 +593,12 @@ with st.container(border=True):
                 st.session_state.editor_base_version = st.session_state.editor_version
             edited = st.data_editor(
                 st.session_state.editor_base,
-                num_rows="dynamic", width="stretch", hide_index=True,
+                # "delete": rows can be removed but not typed in, and clicking a column name sorts the view
+                num_rows="delete", disabled=["Ticker"], width="stretch", hide_index=True,
                 # weights first and narrow, so long ETF names can't push them out of view
                 column_order=["Ticker", "Weight %", "Name"],
                 column_config={
-                    "Ticker": st.column_config.TextColumn(required=True, width="small",
-                                                          help="Yahoo symbol with exchange suffix, e.g. VWRA.L or VECP.DE"),
+                    "Ticker": st.column_config.TextColumn(width="small", help="Yahoo symbol. Add assets with the search above."),
                     "Weight %": st.column_config.NumberColumn(min_value=0.0, max_value=100.0, step=0.5,
                                                               format="%.2f", width="small"),
                     "Name": st.column_config.TextColumn(width="large"),
@@ -633,24 +616,13 @@ with st.container(border=True):
                     st.session_state.verified_tickers.add(t)
             bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
 
-            with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="distribute"):
-                # the live total says why results are missing, before anyone looks for them
-                if abs(total_w - 100) <= 0.01:
-                    st.markdown(":green[**Total 100% ✓**]", width="content")
-                elif total_w < 100:
-                    st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]", width="content")
-                else:
-                    st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]", width="content")
-                # sorting sits with the table it reorders, so the action buttons stay on one line
-                if st.session_state.pop("close_sort", False):
-                    st.session_state.sort_pop = False  # close the menu once the pie is sorted
-                with st.popover("Sort", key="sort_pop", on_change="rerun", type="tertiary",
-                                disabled=len(st.session_state.pie) < 2):
-                    for label in SORTS:
-                        if st.button(label, key=f"sort_{label}", type="tertiary"):
-                            sort_pie(label)
-                            st.session_state.close_sort = True
-                            st.rerun()
+            # the live total says why results are missing, before anyone looks for them
+            if abs(total_w - 100) <= 0.01:
+                st.markdown(":green[**Total 100% ✓**]")
+            elif total_w < 100:
+                st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]")
+            else:
+                st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]")
             with st.container(horizontal=True, vertical_alignment="center"):
                 if bare and st.button("Fix tickers", type="primary",
                                       help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):
@@ -696,7 +668,7 @@ with st.container(border=True):
 
     with right:
         dfp = pd.DataFrame(st.session_state.pie, columns=["Ticker", "Name", "Weight %"])
-        dfp = dfp[dfp["Weight %"] > 0]
+        dfp = dfp[dfp["Weight %"] > 0].sort_values("Weight %", ascending=False, kind="stable")  # biggest slice first
         if not dfp.empty:
             st.markdown("**Allocation**")
             fig = go.Figure(go.Pie(labels=dfp["Ticker"], values=dfp["Weight %"], hole=0.55, sort=False,
