@@ -1,4 +1,5 @@
 import json
+from datetime import date
 import re
 import urllib.parse
 
@@ -394,3 +395,10 @@ def test_a_us_listing_picked_from_search_is_kept(app):
     assert app.tickers() == ["ASML"]
     expect(app.page.get_by_text("have no exchange suffix")).to_have_count(0)
     assert app.metrics()  # results show without "Fix tickers"
+
+
+def test_a_start_date_in_the_future_says_so(app):
+    app.load_example("All-World ETF")
+    app.set_date("From", f"{date.today().year + 1}-01-01")
+    expect(app.page.get_by_text("The start date is in the future. Pick a date up to today.")).to_be_visible()
+    assert not app.metrics()  # no stale results from the old dates

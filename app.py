@@ -524,11 +524,15 @@ with settings_box:
     side_label("Backtest settings")
     base_ccy = st.selectbox("Currency", CURRENCIES, key="base_ccy")
     # Streamlit's default lower bound is only ten years back
-    start = st.date_input("From", min_value=date(1970, 1, 1), max_value=date.today(), key="start",
+    # No max_value: a future date would turn the field red and silently keep the old value (and the old
+    # results). Any date is taken, and the checks below say what's wrong. An end after today means "up to date".
+    start = st.date_input("From", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="start",
                           format="YYYY-MM-DD")
-    end = st.date_input("To", min_value=date(1970, 1, 1), max_value=date.today(), key="end",
+    end = st.date_input("To", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="end",
                         format="YYYY-MM-DD")
-    if start >= end:
+    if start > date.today():
+        st.warning("The start date is in the future. Pick a date up to today.")
+    elif start >= end:
         st.warning("The start date must be before the end date.")
     # the currency shows as an icon in the field when Material has one, otherwise in the label
     ccy_icon = CURRENCY_ICONS.get(base_ccy)
@@ -837,7 +841,7 @@ pie = [a for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]
 tickers = [a["Ticker"] for a in pie]
 own_ready = bool(pie and storage.adds_up(sum(float(a["Weight %"]) for a in pie))
                  and len(set(tickers)) == len(tickers) and not any(is_bare(t) for t in tickers))
-settings_ok = start < end and (initial > 0 or monthly > 0)
+settings_ok = start < end and start <= date.today() and (initial > 0 or monthly > 0)
 names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}
 entries = ([(OWN, tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if own_ready else []) + \
     [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
