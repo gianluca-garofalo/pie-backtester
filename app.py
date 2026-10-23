@@ -375,18 +375,13 @@ def change_draft(operation):
     draft_changed()
 
 
-def paste_rows(found, replace):
-    """Pasted (symbol, name, weight) rows replace the editor's rows, or are added to them (a ticker that's
-    already there gets the pasted weight)."""
-    rows = [] if replace else [dict(r) for r in st.session_state.draft]
-    for symbol, name, weight in found:
+def paste_rows(found, missing, replace):
+    """A pasted list replaces the editor's rows or is added to them; notes say what happened to duplicates,
+    tickers already in the pie and tickers that weren't found (editing.merge_pasted)."""
+    for _, symbol, _, _ in found:
         st.session_state.verified_tickers.add(symbol)
-        same = next((r for r in rows if r["Ticker"] == symbol), None)
-        if same:
-            same["Weight %"] = weight
-        else:
-            rows.append({"Ticker": symbol, "Name": name, "Weight %": weight, "Lock": False})
-    st.session_state.draft = rows
+    st.session_state.draft, st.session_state.paste_notes = editing.merge_pasted(
+        st.session_state.draft, found, missing, replace)
     st.session_state.draft_paste = ""
     draft_changed()
 
@@ -408,12 +403,13 @@ def is_bare(ticker):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def find_listing(ticker, ccy):
-    """The Yahoo listing for a pasted ticker, (symbol, name), or None: the exact symbol first (VWCE.DE, AAPL),
-    then a bare ticker's usual European listing (VWRA -> VWRA.L)."""
-    exact = [h for h in engine.search_assets(ticker, 10) if (h["symbol"] or "").upper() == ticker]
-    if exact:
-        return exact[0]["symbol"], exact[0]["name"] or ticker
-    hits = engine.resolve_ticker(ticker, ccy) if engine.needs_suffix(ticker) else []
+    """The Yahoo listing for a pasted ticker, (symbol, name), or None. A bare ticker gets its listing the way
+    Fix tickers does: the pie currency's European exchanges first (SGLN -> SGLN.L, the gold ETC Trading 212
+    means, not a US OTC stock called SGLN), then the bare US one (AAPL). A ticker with a suffix must exist."""
+    if engine.needs_suffix(ticker):
+        hits = engine.resolve_ticker(ticker, ccy)
+    else:
+        hits = [h for h in engine.search_assets(ticker, 10) if (h["symbol"] or "").upper() == ticker]
     return (hits[0]["symbol"], hits[0]["name"] or hits[0]["symbol"]) if hits else None
 
 
@@ -863,6 +859,7 @@ def start_editing(new=False):
     st.session_state.draft_new = new
     st.session_state.draft_q = st.session_state.draft_paste = ""
     st.session_state.fix_report = None
+    st.session_state.paste_notes = []
     draft_changed()
     st.session_state.open_editor = True  # the dialog opens on the next run, over the updated page
     st.rerun()
@@ -966,6 +963,8 @@ def editor_body():
                           on_click=change_draft, args=(editing.scale_to_100,))
                 st.button("Split evenly", on_click=change_draft, args=(editing.split_evenly,))
             st.caption("Scale to 100% and Split evenly leave locked rows as they are.")
+            for note in st.session_state.get("paste_notes", []):  # what the last pasted list did
+                st.caption(md(note))
             if bare:
                 st.warning("These tickers have no exchange suffix, so Yahoo can't find them (or finds a "
                            "different security): " + ", ".join(bare) + ". Click 'Fix tickers'.")
@@ -986,7 +985,7 @@ def editor_body():
             text = st.text_area("One ticker and weight per line", key="draft_paste",
                                 placeholder="VWCE.DE 60\nAGGH.L 40",
                                 help="Rows copied from a spreadsheet work too: a ticker column and a weight column.")
-            found = []
+            found, missing = [], []
             if text.strip():
                 pairs, unread = editing.parse_paste(text)
                 preview = []
@@ -994,9 +993,13 @@ def editor_body():
                     for t, w in pairs:
                         hit = find_listing(t, base_ccy)
                         preview.append({"Pasted": t, "Listing": hit[0] if hit else "not found",
-                                        "Name": hit[1] if hit else "", "Weight %": w})
+                                        "Name": hit[1] if hit else "", "Weight %": w,
+                                        # a listing that isn't what was typed may be another security
+                                        "Note": f"check: {hit[0]} for {t}" if hit and hit[0] != t else ""})
                         if hit:
-                            found.append((hit[0], hit[1], w))
+                            found.append((t, hit[0], hit[1], w))
+                        else:
+                            missing.append(t)
                 if preview:
                     st.dataframe(pd.DataFrame(preview), hide_index=True, width="stretch",
                                  column_config={"Weight %": st.column_config.NumberColumn(format="%.2f")})
@@ -1006,8 +1009,8 @@ def editor_body():
             # inside an editor may take), so typing showed nothing and offered nothing to press
             with st.container(horizontal=True):
                 st.button("Check list", help="Looks up each ticker. Nothing changes until Replace rows or Add to rows.")
-                st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, True))
-                st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, False))
+                st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, missing, True))
+                st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, missing, False))
     with right:
         live = sorted([(a["Ticker"], a["Name"] or a["Ticker"], float(a["Weight %"] or 0)) for a in draft
                        if float(a["Weight %"] or 0) > 0], key=lambda r: -r[2])

@@ -73,3 +73,34 @@ def with_added(rows, symbol: str, name: str) -> list[dict]:
     """The rows plus a new asset that gets what's left to reach 100%, so the weights already set stay."""
     return [dict(x) for x in rows] + [{"Ticker": symbol, "Name": name, "Weight %": max(remaining(rows), 0.0),
                                        "Lock": False}]
+
+
+def merge_pasted(rows, found, missing, replace) -> tuple[list[dict], list[str]]:
+    """The editor's rows after a pasted list, and notes on what happened to it.
+
+    found: (typed ticker, symbol, name, weight) for each line that matched a listing; missing: the typed
+    tickers that didn't. replace=True starts from no rows; otherwise a symbol that's already there gets the
+    pasted weight (keeping its lock). A symbol listed twice gets the sum of its weights."""
+    out = [] if replace else [dict(x) for x in rows]
+    before = {x["Ticker"] for x in out}
+    pasted, counts = {}, {}
+    for _, symbol, name, weight in found:
+        counts[symbol] = counts.get(symbol, 0) + 1
+        if symbol in pasted:
+            pasted[symbol]["Weight %"] = round(pasted[symbol]["Weight %"] + float(weight), 2)
+        else:
+            pasted[symbol] = {"Ticker": symbol, "Name": name, "Weight %": float(weight), "Lock": False}
+    notes = []
+    for symbol, row in pasted.items():
+        same = next((x for x in out if x["Ticker"] == symbol), None)
+        if same:
+            same["Weight %"] = row["Weight %"]
+        else:
+            out.append(row)
+        if counts[symbol] > 1:
+            notes.append(f"{symbol} is in the list twice: its weights were added up ({row['Weight %']:.2f}%).")
+        elif symbol in before:
+            notes.append(f"{symbol} was already in the pie: its weight is now {row['Weight %']:.2f}%.")
+    if missing:
+        notes.append("Not found, so left out: " + ", ".join(missing) + ".")
+    return out, notes

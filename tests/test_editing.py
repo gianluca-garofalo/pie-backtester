@@ -64,3 +64,20 @@ def test_with_added_gets_what_is_left():
     rows = editing.with_added([r("A", 60)], "B", "Bee")
     assert rows[-1] == {"Ticker": "B", "Name": "Bee", "Weight %": 40.0, "Lock": False}
     assert editing.with_added([r("A", 120)], "B", "Bee")[-1]["Weight %"] == 0.0
+
+
+def test_merge_pasted_replaces_and_reports_duplicates_and_missing():
+    found = [("AAPL", "AAPL", "Apple", 30.5), ("SGLN", "SGLN.L", "Gold", 50), ("AAPL", "AAPL", "Apple", 5)]
+    rows, notes = editing.merge_pasted([r("MSFT", 100)], found, ["ZZZZ9"], replace=True)
+    assert [(x["Ticker"], x["Weight %"]) for x in rows] == [("AAPL", 35.5), ("SGLN.L", 50)]
+    assert notes == ["AAPL is in the list twice: its weights were added up (35.50%).",
+                     "Not found, so left out: ZZZZ9."]
+
+
+def test_merge_pasted_adds_and_says_which_weights_changed():
+    rows, notes = editing.merge_pasted([r("MSFT", 60, lock=True), r("AAPL", 40)],
+                                       [("msft", "MSFT", "Microsoft", 10), ("VWCE.DE", "VWCE.DE", "All-World", 30)],
+                                       [], replace=False)
+    assert [(x["Ticker"], x["Weight %"], x["Lock"]) for x in rows] == \
+        [("MSFT", 10, True), ("AAPL", 40, False), ("VWCE.DE", 30, False)]
+    assert notes == ["MSFT was already in the pie: its weight is now 10.00%."]

@@ -580,3 +580,20 @@ def test_undo_doesnt_bring_back_a_duplicate_name(app):
     app.click("Undo")
     expect(app.saved_row("E2E again")).to_have_count(1)
     app.delete_saved("E2E again")
+
+
+def test_pasted_bare_tickers_find_their_european_listing_and_say_so(app):
+    app.load_example("Tech Leaders")  # EUR
+    editor = app.open_editor()
+    editor.get_by_text("Paste a list").click()
+    box = editor.get_by_role("textbox", name="One ticker and weight per line")
+    box.fill("SGLN 50\nAAPL 30\nAAPL 20\nZZZZ9 5")
+    editor.get_by_role("button", name="Check list").click()
+    app.wait()
+    preview = {r[0]: r for r in app.rows(editor.get_by_test_id("stDataFrame").nth(1))}
+    assert preview["SGLN"][1] == "SGLN.L"  # the London gold ETC, not a US OTC stock called SGLN
+    assert "check" in preview["SGLN"][-1].lower()  # the listing differs from what was typed
+    app.click("Replace rows", root=editor)
+    assert [(r[0], float(r[1])) for r in app.rows()] == [("SGLN.L", 50), ("AAPL", 50)]
+    expect(editor.get_by_text("AAPL is in the list twice: its weights were added up (50.00%).")).to_be_visible()
+    expect(editor.get_by_text("Not found, so left out: ZZZZ9.")).to_be_visible()
