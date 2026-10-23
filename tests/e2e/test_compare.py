@@ -98,8 +98,11 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
 
 def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
     app.load_example("All-World ETF")  # EUR, never rebalanced
-    app.load_example("Tech Leaders")  # saved with USD and quarterly rebalancing
-    expect(app.page.get_by_text("Kept your settings. 'Tech Leaders' was saved with USD")).to_be_visible()
+    app.page.get_by_role("button", name="Examples").click()
+    app.page.get_by_test_id("stPopoverBody").get_by_role("button", name="Tech Leaders", exact=True).click()
+    # saved with USD and quarterly rebalancing; the note is a toast, gone after a few seconds, so look right away
+    expect(app.page.get_by_text("Kept your settings. 'Tech Leaders' was saved with USD")).to_be_visible(timeout=20_000)
+    app.wait()
     expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("EUR")
     expect(app.page.get_by_role("radiogroup", name="Rebalance to target")
            .get_by_role("radio", checked=True)).to_have_text("Never")
