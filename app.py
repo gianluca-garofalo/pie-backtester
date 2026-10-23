@@ -217,6 +217,11 @@ def on_phone():
     return "Mobi" in (st.context.headers.get("User-Agent") or "")
 
 
+def money_column(ccy):
+    """A table column format for amounts: €1,234.56 for euros and dollars, thousands separators otherwise."""
+    return {"EUR": "euro", "USD": "dollar"}.get(ccy, "localized")
+
+
 def amount_format(key):
     """Number format for an amount field: "1000", or "10.12" once it has cents."""
     return "%.0f" if float(st.session_state[key]).is_integer() else "%.2f"
@@ -999,9 +1004,12 @@ if results:
                              "Current %": st.column_config.NumberColumn(format="%.1f"),
                              "Drift": st.column_config.NumberColumn(
                                  format="%+.1f pp", help="Current weight minus target weight, in percentage points"),
-                             "Value": st.column_config.NumberColumn(format=f"%.2f {ccy}"),
+                             "Value": st.column_config.NumberColumn(
+                                 f"Value ({ccy})" if money_column(ccy) == "localized" else "Value",
+                                 format=money_column(ccy)),
                              "Gain": st.column_config.NumberColumn(
-                                 format=f"%+.2f {ccy}", help="What this asset added to the pie's gain"),
+                                 f"Gain ({ccy})" if money_column(ccy) == "localized" else "Gain",
+                                 format=money_column(ccy), help="What this asset added to the pie's gain"),
                              "Price return %": st.column_config.NumberColumn(format="%+.1f"),
                              "History": st.column_config.AreaChartColumn("Value over time"),
                          })
