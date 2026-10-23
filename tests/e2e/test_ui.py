@@ -682,3 +682,33 @@ def test_period_presets_fit_a_small_phone(browser, playwright, app_url):
         box = small.page.locator(".st-key-period_pick").get_by_role("radio", name=name, exact=True).bounding_box()
         assert box["x"] >= 0 and box["x"] + box["width"] <= 360, name  # "Custom" was cut to "Cust"
     context.close()
+
+
+def test_an_asset_at_zero_is_named_by_the_total(app):
+    app.load_example("Tech Leaders")
+    app.search_add("NVDA")  # the pie is at 100%, so NVDA gets 0%
+    expect(app.editor.get_by_text("NVDA at 0%")).to_be_visible()  # "Total 100% ✓" alone hid it
+    expect(app.editor.get_by_text("Double-click a weight to change it.")).to_be_visible()
+
+
+def test_replace_rows_works_without_check_list(app):
+    app.load_example("Tech Leaders")
+    editor = app.open_editor()
+    editor.get_by_text("Paste a list").click()
+    box = editor.get_by_role("textbox", name="One ticker and weight per line")
+    box.click()
+    app.page.keyboard.type("VWCE.DE 60")
+    app.page.keyboard.press("Enter")
+    app.page.keyboard.type("AAPL 40")
+    app.click("Replace rows", root=editor)  # enabled while typing; one click reads the list and replaces
+    assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
+
+
+def test_the_editor_on_a_phone(phone):
+    phone.load_example("60/40 Stocks & Bonds")
+    editor = phone.open_editor()
+    box = editor.get_by_role("button", name="Apply").bounding_box()
+    assert box["y"] + box["height"] <= 844, box  # reachable without scrolling past the whole editor
+    editor.get_by_text("Paste a list").click()
+    editor.get_by_role("textbox", name="One ticker and weight per line").click()
+    expect(editor.get_by_text("Ctrl+Enter")).to_have_count(0)  # no keyboard shortcut hint on a touch screen

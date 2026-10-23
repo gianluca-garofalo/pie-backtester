@@ -321,6 +321,7 @@ def amount_format(key):
 PAGE_CSS = """<style>
 .st-key-plan_initial button,.st-key-plan_monthly button{display:none}  /* the +/- steppers */
 .st-key-period_pick [role=radiogroup]{flex-wrap:wrap}  /* six presets don't fit a 360 px phone */
+@media (pointer:coarse){.st-key-draft_paste [data-testid=InputInstructions]{display:none}}  /* no Ctrl+Enter there */
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
 .card-name{font-weight:700;font-size:1.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -381,13 +382,27 @@ def change_draft(operation):
     draft_changed()
 
 
-def paste_rows(found, missing, replace):
-    """A pasted list replaces the editor's rows or is added to them; notes say what happened to duplicates,
-    tickers already in the pie and tickers that weren't found (editing.merge_pasted)."""
+def paste_rows(replace):
+    """The pasted list replaces the editor's rows or is added to them; notes say what happened to duplicates,
+    tickers already in the pie, tickers that weren't found and lines that couldn't be read."""
+    pairs, unread = editing.parse_paste(st.session_state.get("draft_paste", ""))
+    found, missing = [], []
+    for t, w in pairs:
+        hit = find_listing(t, st.session_state.base_ccy)
+        if hit:
+            found.append((t, hit[0], hit[1], w))
+        else:
+            missing.append(t)
+    if not found:
+        st.session_state.paste_notes = ["Nothing to add: no line has a ticker that was found."] + (
+            ["Couldn't read " + "; ".join(unread) + "."] if unread else [])
+        return
     for _, symbol, _, _ in found:
         st.session_state.verified_tickers.add(symbol)
     st.session_state.draft, st.session_state.paste_notes = editing.merge_pasted(
         st.session_state.draft, found, missing, replace)
+    if unread:
+        st.session_state.paste_notes.append("Couldn't read " + "; ".join(unread) + ".")
     st.session_state.draft_paste = ""
     draft_changed()
 
@@ -896,6 +911,32 @@ def apply_draft():
     return ok
 
 
+def editor_footer(draft, total, bare, dupes, replacing):
+    """Discard / Save to My pies / Apply, and why Apply waits. On phones it sits under the total, not
+    screens below at the end of the editor."""
+    # only a finished pie is applied: an unfinished one had no results and blocked editing the others
+    ready = bool(draft) and storage.adds_up(total) and not bare and not dupes
+    if draft and not ready:
+        st.caption("Apply needs the weights to add up to 100%" + (", every ticker found" if bare else "")
+                   + (", each ticker once" if dupes else "") + ". Discard changes keeps the pie as it was.")
+    with st.container(horizontal=True, horizontal_alignment="right"):
+        if st.button("Discard changes"):
+            st.rerun()
+        can_save = ready and not (shared_storage and not user_id)
+        if st.button("Replace in My pies" if replacing else "Save to My pies", icon=":material/save:", disabled=not can_save,
+                     help="Sign in to save pies." if shared_storage and not user_id else None):
+            if apply_draft():
+                try:
+                    saved, updated = save_open_pie(st.session_state.pie_name)
+                    flash("success", f"{'Updated' if updated else 'Saved'} pie '{md(saved['name'])}'.")
+                except Exception as ex:
+                    flash("error", f"Failed to save pie: {ex}")
+            st.rerun()
+        if st.button("Apply", type="primary", disabled=not ready):
+            apply_draft()
+            st.rerun()
+
+
 def editor_body():
     """Search, the table (weights and locks), Scale and Split, a pasted list, and a preview. It reruns on its
     own; the page only changes on Apply."""
@@ -960,8 +1001,12 @@ def editor_body():
         dupes = sorted({t for t in named if named.count(t) > 1})
         if draft:
             # the live total says why results would be missing
+            # an asset at 0% is easy to miss under a green total (search adds it with what's left: nothing)
+            zero = [a["Ticker"] for a in draft if float(a["Weight %"] or 0) == 0]
             if storage.adds_up(total):
-                st.markdown(":green[**Total 100% ✓**]")
+                st.markdown(":green[**Total 100% ✓**]" + (
+                    f" · :orange[{md(', '.join(zero))} at 0%: give {'it' if len(zero) == 1 else 'them'} a weight "
+                    "or delete the row]" if zero else ""))
             elif total < 100:
                 st.markdown(f":orange[**Total {total:.2f}% · {100 - total:.2f}% left**]")
             else:
@@ -975,7 +1020,8 @@ def editor_body():
                 st.button("Scale to 100%", disabled=storage.adds_up(total) or total == 0,
                           on_click=change_draft, args=(editing.scale_to_100,))
                 st.button("Split evenly", on_click=change_draft, args=(editing.split_evenly,))
-            st.caption("Scale to 100% and Split evenly leave locked rows as they are.")
+            st.caption("Double-click a weight to change it. Locked rows keep their weight when you Scale to 100% "
+                       "or Split evenly.")
             for note in st.session_state.get("paste_notes", []):  # what the last pasted list did
                 st.caption(md(note))
             if bare:
@@ -994,11 +1040,19 @@ def editor_body():
             if dupes:
                 st.warning("These tickers are in the pie more than once: " + md(", ".join(dupes)) +
                            ". Delete one of the rows.")
+        if phone:
+            editor_footer(draft, total, bare, dupes, replacing)
         with st.expander("Paste a list"):
             text = st.text_area("One ticker and weight per line", key="draft_paste",
                                 placeholder="VWCE.DE 60\nAGGH.L 40",
                                 help="Rows copied from a spreadsheet work too: a ticker column and a weight column.")
-            found, missing = [], []
+            # always enabled and read the list themselves: greyed until the list was checked, the first click
+            # only checked it and the buttons then jumped below the preview
+            with st.container(horizontal=True):
+                st.button("Check list", help="Shows what each ticker matches. Nothing changes until Replace rows "
+                                             "or Add to rows.")
+                st.button("Replace rows", on_click=paste_rows, args=(True,))
+                st.button("Add to rows", on_click=paste_rows, args=(False,))
             if text.strip():
                 pairs, unread = editing.parse_paste(text)
                 preview = []
@@ -1009,21 +1063,11 @@ def editor_body():
                                         "Name": hit[1] if hit else "", "Weight %": w,
                                         # a listing that isn't what was typed may be another security
                                         "Note": f"check: {hit[0]} for {t}" if hit and hit[0] != t else ""})
-                        if hit:
-                            found.append((t, hit[0], hit[1], w))
-                        else:
-                            missing.append(t)
                 if preview:
                     st.dataframe(pd.DataFrame(preview), hide_index=True, width="stretch",
                                  column_config={"Weight %": st.column_config.NumberColumn(format="%.2f")})
                 if unread:
                     st.caption("Couldn't read " + "; ".join(md(b) for b in unread) + ".")
-            # always there: the list was only read once the box lost focus (or on Ctrl+Enter, which a browser
-            # inside an editor may take), so typing showed nothing and offered nothing to press
-            with st.container(horizontal=True):
-                st.button("Check list", help="Looks up each ticker. Nothing changes until Replace rows or Add to rows.")
-                st.button("Replace rows", disabled=not found, on_click=paste_rows, args=(found, missing, True))
-                st.button("Add to rows", disabled=not found, on_click=paste_rows, args=(found, missing, False))
     with right:
         live = sorted([(a["Ticker"], a["Name"] or a["Ticker"], float(a["Weight %"] or 0)) for a in draft
                        if float(a["Weight %"] or 0) > 0], key=lambda r: -r[2])
@@ -1045,27 +1089,8 @@ def editor_body():
                 st.caption(f"No preview: {md(e)}")
         elif live:
             st.caption("The preview appears once the weights add up to 100% and every ticker is found.")
-    # only a finished pie is applied: an unfinished one had no results and blocked editing the others
-    ready = bool(draft) and storage.adds_up(total) and not bare and not dupes
-    if draft and not ready:
-        st.caption("Apply needs the weights to add up to 100%" + (", every ticker found" if bare else "")
-                   + (", each ticker once" if dupes else "") + ". Discard changes keeps the pie as it was.")
-    with st.container(horizontal=True, horizontal_alignment="right"):
-        if st.button("Discard changes"):
-            st.rerun()
-        can_save = ready and not (shared_storage and not user_id)
-        if st.button("Replace in My pies" if replacing else "Save to My pies", icon=":material/save:", disabled=not can_save,
-                     help="Sign in to save pies." if shared_storage and not user_id else None):
-            if apply_draft():
-                try:
-                    saved, updated = save_open_pie(st.session_state.pie_name)
-                    flash("success", f"{'Updated' if updated else 'Saved'} pie '{md(saved['name'])}'.")
-                except Exception as ex:
-                    flash("error", f"Failed to save pie: {ex}")
-            st.rerun()
-        if st.button("Apply", type="primary", disabled=not ready):
-            apply_draft()
-            st.rerun()
+    if not phone:
+        editor_footer(draft, total, bare, dupes, replacing)
 
 
 pie_editor = st.dialog("Edit pie", width="large")(editor_body)
