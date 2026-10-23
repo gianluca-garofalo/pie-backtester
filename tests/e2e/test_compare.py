@@ -122,16 +122,28 @@ def test_late_listing_choice_card(app):
     expect(app.page.get_by_text("Started later, with the average value")).to_have_count(0)  # that rule is gone
 
 
-def test_start_choice_is_kept_while_the_card_is_hidden(app):
+def test_start_choice_is_kept_when_nothing_lists_late(app):
     app.load_example("Tech Leaders")
     app.load_example("All-World ETF")
     app.set_date("From", "2016-01-01")
     start_choice(app).get_by_text("Each pie from its own first price").click()
     app.wait()
-    app.remove_pie("All-World ETF")  # nothing lists late now, so the card goes
-    expect(start_choice(app)).to_have_count(0)
+    app.remove_pie("All-World ETF")  # nothing lists late now: the choice stays, with what each option means
+    expect(start_choice(app).get_by_role("radio", name="Each pie from its own first price")).to_be_checked()
     app.load_example("All-World ETF")
     expect(start_choice(app).get_by_role("radio", name="Each pie from its own first price")).to_be_checked()
+
+
+def test_the_period_bar_always_shows_everything(app):
+    # parts that came and went with the period made it confusing
+    app.load_example("All-World ETF")
+    for preset in ("10Y", "5Y"):  # VWCE.DE lists in 2019: only 10Y starts before that
+        app.page.locator(".st-key-period_pick").get_by_role("radio", name=preset, exact=True).click()
+        app.wait()
+        expect(start_choice(app).get_by_role("radio")).to_have_count(3)
+        expect(app.page.get_by_text("Solid: the days the results use. Faded: ")).to_be_visible()
+        expect(app.page.get_by_text("Dotted: an asset has no prices yet.")).to_be_visible()
+    expect(start_choice(app)).to_contain_text("the same as the first option")  # at 5Y nothing waits as cash
 
 
 def test_a_pie_without_prices_in_the_period_says_why(app):
@@ -377,4 +389,4 @@ def test_the_strip_shows_cash_days_apart(app):
         "e => e.data.map(t => [t.name, String(t.x[0]).slice(0, 10), t.line.dash])")
     # All-World waits as cash from 1 Jan 2015 until VWCE.DE lists: it looked fully invested
     assert ["cash until listed", "2015-01-01", "dash"] in traces, traces
-    expect(app.page.get_by_text("Dashed: the results use these days, but that slice waits as cash.")).to_be_visible()
+    expect(app.page.get_by_text("Dashed: the results use these days, but a slice waits as cash.")).to_be_visible()

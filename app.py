@@ -1192,11 +1192,11 @@ def coverage_figure(names):
     """One bar per pie over its own history, not only the period: dotted grey before every asset has prices,
     faded colour where it has them but the results don't use the days (before From, or waiting to start with
     the others), solid colour for the days the results use. The axis starts at the earliest pie's first full
-    day when that's before From, which is marked. Returns (figure, key sentence for the styles shown)."""
+    day when that's before From, which is marked. Returns (figure, key sentence)."""
     fig = go.Figure()
     t_from, t1 = pd.Timestamp(start), pd.Timestamp(end)
     t0 = min([t_from] + [history[n][0] for n in names if n in history and history[n][0] is not None])
-    labels, shown = [], set()
+    labels = []
     for row, n in enumerate(names):  # one numbered row per pie: two cut names can be the same
         name = plain_name(n)
         labels.append(html.escape(name if len(name) <= 24 else name[:23] + "…"))  # a long name squeezed the bars
@@ -1214,19 +1214,16 @@ def coverage_figure(names):
                                      line=dict(color="#8a8d96", width=2, dash="dot")))
             fig.add_annotation(x=t0 + (no_prices_until - t0) / 2, y=row, yshift=11, showarrow=False,
                                text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
-            shown.add("dotted")
         if cash_until is not None:
             fig.add_trace(go.Scatter(x=[used, cash_until], y=[row] * 2, mode="lines", name="cash until listed",
                                      line=dict(color=pie_colors[n], width=4, dash="dash")))
             fig.add_annotation(x=used + (cash_until - used) / 2, y=row, yshift=11, showarrow=False,
                                text=f"cash until {html.escape(ticker)} lists", font=dict(size=10, color="#5f636e"))
-            shown.add("dashed")
             used = cash_until  # solid from the day every asset is bought
         if used is not None:
             if full is not None and full + pd.Timedelta(days=3) < used:
                 fig.add_trace(go.Scatter(x=[full, used], y=[row] * 2, mode="lines", name="has prices, not used",
                                          line=dict(color=faded(pie_colors[n]), width=10)))
-                shown.add("faded")
             fig.add_trace(go.Scatter(x=[used, t1], y=[row] * 2, mode="lines", name="used",
                                      line=dict(color=pie_colors[n], width=10)))
     if t0 < t_from:  # the period starts later than the strip
@@ -1235,11 +1232,9 @@ def coverage_figure(names):
     fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
                       yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels),
                       xaxis=dict(range=[t0, t1]))
-    key = " ".join(text for part, text in (
-        ("solid", "Solid: the days the results use."),
-        ("faded", "Faded: the pie has prices, but the results don't use these days."),
-        ("dashed", "Dashed: the results use these days, but that slice waits as cash."),
-        ("dotted", "Dotted: an asset has no prices yet.")) if part == "solid" or part in shown) if shown else ""
+    # the whole key, always: a key that changed with the period was one more thing coming and going
+    key = ("Solid: the days the results use. Faded: the pie has prices, but the results don't use these days. "
+           "Dashed: the results use these days, but a slice waits as cash. Dotted: an asset has no prices yet.")
     return fig, key
 
 
@@ -1271,30 +1266,36 @@ with period_detail:
             sentence += (f" {ticker}'s slice is held as cash until {nice(listed)}." if rule == "cash" else
                          f" {' and '.join(holders)} can't start earlier: {ticker} has prices from {nice(listed)}.")
         st.markdown(md(sentence))
-    if late:
-        ticker, listed = max(((t, d) for n in late for t, d in late[n].items()), key=lambda x: x[1])
+    if entries:  # always shown, with all three options: parts that came and went with the period confused
+        ticker, listed = (max(((t, d) for n in late for t, d in late[n].items()), key=lambda x: x[1])
+                          if late else (None, None))
         several = len(entries) > 1
-        options = ["common", "own", "cash"] if several else ["common", "cash"]
+        options = ["common", "own", "cash"]
         common = max(first_full.values()) if first_full else None
         lost = max(((n, months(max(d, pd.Timestamp(start)), common)) for n, d in first_full.items()),
                    key=lambda x: x[1], default=(None, 0))
+        same = "the same as the first option"
         labels = {
             "common": (f"Start all pies on {nice(common)}" if several else f"Start on {nice(common)}")
                       if common is not None else "Start when every asset has prices",
             "own": "Each pie from its own first price",
-            "cash": f"Start on {nice(start)}, holding cash until {md(ticker)} lists",
+            "cash": f"Start on {nice(start)}, holding cash until {md(ticker)} lists" if ticker else
+                    f"Start on {nice(start)}, holding cash for assets that list later",
         }
         captions = {
             "common": ":green-badge[recommended] " + (
                 "Same days, same deposits, so the pies can be ranked."
                 + (f" {md(plain_name(lost[0]))} loses its first {lost[1]} months." if lost[1] >= 1 else "")
-                if several else "The pie as you built it, over a shorter period."),
-            "own": "Every pie shows its own dates, so they aren't ranked against each other.",
+                if several else "The pie as you built it" + (", over a shorter period." if late else ".")),
+            "own": ("Every pie shows its own dates, so they aren't ranked against each other." if several and late
+                    else f"With one pie, {same}." if not several
+                    else f"Every pie has all its prices from {nice(start)}, so this is {same}."),
             "cash": f":orange-badge[changes the strategy] Its slice waits as cash, earning nothing, for "
-                    f"{months(start, listed)} months.",
+                    f"{months(start, listed)} months." if ticker else
+                    f"Every asset has prices from {nice(start)}, so nothing waits as cash: {same}.",
         }
-        # the choice is kept in start_rule, so it survives while this card isn't shown
-        st.session_state.start_rule_pick = rule if rule in options else "common"
+        # the choice is kept in start_rule (re-seeded here each run)
+        st.session_state.start_rule_pick = rule
         st.radio("When the pies start", options, key="start_rule_pick", format_func=labels.get,
                  captions=[captions[o] for o in options], label_visibility="collapsed", on_change=pick_start_rule)
 own = results.get(OWN)
