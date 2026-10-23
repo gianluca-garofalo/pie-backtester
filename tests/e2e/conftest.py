@@ -152,10 +152,34 @@ class App:
             section.locator("summary").click()
             self.page.wait_for_timeout(300)
 
-    def set_number(self, label, value):
-        self.page.get_by_role("spinbutton", name=label).fill(str(value))
-        self.page.keyboard.press("Enter")
-        self.wait()
+    # --- the plan: the money settings, changed in the Edit plan dialog ---
+    @property
+    def plan(self):
+        return self.page.locator(".st-key-plan")
+
+    def open_plan(self):
+        self.plan.get_by_role("button", name="Edit plan").click()
+        dialog = self.page.get_by_role("dialog")
+        expect(dialog).to_be_visible()
+        return dialog
+
+    def set_plan(self, currency=None, initial=None, monthly=None, rebalance=None, apply=True):
+        """Change settings in the Edit plan dialog, then Apply. rebalance: Never, Month, Quarter or Year."""
+        dialog = self.open_plan()
+        for label, value in (("Initial", initial), ("Monthly", monthly)):
+            if value is not None:
+                dialog.get_by_role("spinbutton", name=label).fill(str(value))
+                dialog.get_by_role("spinbutton", name=label).press("Enter")
+                self.page.wait_for_timeout(400)
+        if currency:
+            dialog.get_by_role("combobox", name="Currency").click()
+            self.page.get_by_role("option", name=currency, exact=True).click()
+        if rebalance:
+            dialog.get_by_role("radio", name=rebalance, exact=True).click()
+        if apply:
+            dialog.get_by_role("button", name="Apply").click()
+            self.wait()
+        return dialog
 
     def set_date(self, label, iso):
         y, m, d = iso.split("-")

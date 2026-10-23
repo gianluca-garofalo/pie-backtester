@@ -25,11 +25,10 @@ def test_example_loads_settings_and_backtests(app, name):
     app.load_example(name)
 
     assert app.tickers() == [a["ticker"] for a in ex["assets"]]
-    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value(ex["currency"])
-    expect(app.page.get_by_role("radiogroup", name="Rebalance to target").get_by_role("radio", checked=True)).to_have_text(
-        {"Never": "Never", "Monthly": "Month", "Quarterly": "Quarter", "Yearly": "Year"}[ex["rebalance"]])
-    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value(f"{ex['monthly']:.0f}")
-    expect(app.page.get_by_text(f"/month · {ex['start'][:7]}")).to_be_visible()  # the settings summary line
+    # the plan bar reads the settings back
+    expect(app.plan).to_contain_text(f"{ex['currency']} · rebalance {ex['rebalance'].lower()}")
+    expect(app.plan).to_contain_text(f"{ex['monthly']:,.0f} every month")
+    assert date_of(app, "From") == date.fromisoformat(ex["start"])
 
     assert not [a for a in app.alerts() if "failed" in a.lower() or "couldn't" in a.lower()], app.alerts()
     metrics = app.metrics()
@@ -143,7 +142,7 @@ def test_save_load_delete(app):
 
 def test_export_then_import(app, tmp_path):
     app.load_example("All-World ETF")
-    app.set_number("Initial", 2500)
+    app.set_plan(initial=2500)
     app.open_sidebar_section("Import / export JSON")
     with app.page.expect_download() as dl:
         app.sidebar.get_by_role("button", name="Download pie (.json)").click()
@@ -157,13 +156,13 @@ def test_export_then_import(app, tmp_path):
     app.sidebar.locator("input[type=file]").set_input_files(path)  # opens without another click
     app.wait()
     assert app.tickers() == ["VWCE.DE"]
-    expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("777")
+    expect(app.plan).to_contain_text("777 to start")
     assert app.chips() == ["Imported (editing)"]
 
 
 def test_share_link_restores_pie_and_settings(app):
     app.load_example("Tech Leaders")
-    app.set_number("Initial", 4321)
+    app.set_plan(initial=4321)
     app.page.get_by_role("button", name="Share").click()
     link = app.page.get_by_test_id("stPopoverBody").get_by_test_id("stCode").inner_text().strip()
     assert link.startswith(app.url)
@@ -174,8 +173,8 @@ def test_share_link_restores_pie_and_settings(app):
     app.wait()
     assert app.tickers() == ["QDVE.DE", "AAPL", "MSFT"]
     assert app.rows()[1][2] == "Apple Inc."  # names left out of the link are looked up again
-    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("USD")
-    expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("4321")
+    expect(app.plan).to_contain_text("$4,321 to start")
+    expect(app.plan).to_contain_text("USD")
 
 
 def test_older_long_share_links_still_open(app):
@@ -207,12 +206,13 @@ def test_dates_before_2010_are_allowed(app):
 
 def test_results_wait_for_valid_settings(app):
     app.load_example("All-World ETF")
-    app.set_number("Initial", 0)
-    app.set_number("Monthly", 0)
-    expect(app.page.get_by_text("Set an initial investment or a monthly deposit.")).to_be_visible()
-    assert not app.metrics()
+    dialog = app.set_plan(initial=0, monthly=0, apply=False)  # nothing to invest can't be applied
+    expect(dialog.get_by_text("Set an initial investment or a monthly deposit.")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Apply")).to_be_disabled()
+    app.page.keyboard.press("Escape")
+    expect(app.page.get_by_role("dialog")).to_have_count(0)
+    expect(app.plan).to_contain_text("€1,000 to start")  # unchanged
 
-    app.set_number("Monthly", 100)
     app.set_date("From", "2026-01-01")
     app.set_date("To", "2025-01-01")
     expect(app.page.get_by_text("The start date must be before the end date.")).to_be_visible()
@@ -297,10 +297,14 @@ def test_standard_actions_have_icons_and_words(app):
 
 def test_amounts_keep_their_cents(app):
     app.load_example("All-World ETF")
-    app.set_number("Monthly", 10.12)
-    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("10.12")
-    app.set_number("Monthly", 200)
-    expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("200")  # no ".00" on whole amounts
+    app.set_plan(monthly=10.12)
+    expect(app.plan).to_contain_text("€10.12 every month")
+    expect(app.open_plan().get_by_role("spinbutton", name="Monthly")).to_have_value("10.12")
+    app.page.keyboard.press("Escape")
+    app.set_plan(monthly=200)
+    expect(app.plan).to_contain_text("€200 every month")  # no ".00" on whole amounts
+    expect(app.open_plan().get_by_role("spinbutton", name="Monthly")).to_have_value("200")
+    app.page.keyboard.press("Escape")
 
 
 def test_a_broken_file_says_why(app, tmp_path):

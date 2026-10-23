@@ -60,11 +60,11 @@ def test_clicking_a_compared_pie_opens_it(app):
     expect(app.page.get_by_test_id("stPlotlyChart").first).to_contain_text("VWCE.DE")  # the donut
 
 
-def test_compared_pies_share_the_sidebar_settings(app):
+def test_compared_pies_share_the_plan(app):
     app.load_example("All-World ETF")
     app.load_example("Three-Fund Portfolio")
-    app.set_number("Initial", 5000)
-    app.set_number("Monthly", 0)
+    app.set_plan(initial=5000, monthly=0)
+    expect(app.plan).to_contain_text("€5,000 to start · no monthly deposits")
     expect(app.page.get_by_text("Every pie had €5,000.00 put in.")).to_be_visible()
 
 
@@ -145,9 +145,7 @@ def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
     expect(app.page.get_by_text("'Tech Leaders' uses the comparison's settings: EUR, not its own USD")).to_be_visible(
         timeout=20_000)
     app.wait()
-    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("EUR")
-    expect(app.page.get_by_role("radiogroup", name="Rebalance to target")
-           .get_by_role("radio", checked=True)).to_have_text("Never")
+    expect(app.plan).to_contain_text("EUR · rebalance never")
 
 
 def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):

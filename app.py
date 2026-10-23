@@ -315,9 +315,7 @@ def side_label(text):
 # It uses Streamlit's test ids, so check it after a Streamlit upgrade.
 SIDEBAR_CSS = """<style>
 .side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
-.st-key-rebalance [role=radiogroup]{flex-wrap:nowrap}
-.st-key-rebalance button{padding-left:0;padding-right:0;flex:1 1 0;min-width:0}
-.st-key-initial button,.st-key-monthly button{display:none}  /* the +/- steppers */
+.st-key-plan_initial button,.st-key-plan_monthly button{display:none}  /* the +/- steppers */
 [data-testid=stSidebar] [data-testid=stExpander] details{border:none;background:none}
 [data-testid=stSidebar] [data-testid=stExpander] summary{padding:0;min-height:1.6rem}
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
@@ -635,10 +633,10 @@ def delete_dialog(pie):
         st.error(f"Could not delete pie '{md(pie['name'])}'.")
 
 
-# ---------------- sidebar: settings first, then your pies, then the account ----------------
+# ---------------- sidebar: your pies, then the account ----------------
 with st.sidebar:
     st.html(SIDEBAR_CSS)
-    settings_box, pies_box, account_box = st.container(), st.container(), st.container()
+    pies_box, account_box = st.container(), st.container()
 
 with account_box:
     st.divider()
@@ -648,21 +646,38 @@ with account_box:
     current_user = auth.render_auth_ui(allow_guest=not shared_storage)
     user_id = current_user.get("id") if current_user else None
 
-with settings_box:
-    side_label("Backtest settings")
-    base_ccy = st.selectbox("Currency", CURRENCIES, key="base_ccy")
+# the money settings are plain keys, changed only through the Plan dialog (or a loaded pie)
+base_ccy, initial, monthly, rebalance = (st.session_state[k] for k in ("base_ccy", "initial", "monthly", "rebalance"))
+
+
+def plan_amount(x):
+    """€1,000 or €10.12: cents only when there are any."""
+    text = money(x, base_ccy)
+    return text.replace(".00", "") if round(x, 2) == round(x) else text
+
+
+@st.dialog("Plan")
+def plan_dialog():
+    """The money settings, with their own fields: nothing changes until Apply."""
+    ccy = st.selectbox("Currency", CURRENCIES, key="plan_ccy")
     # the currency shows as an icon in the field when Material has one, otherwise in the label
-    ccy_icon = CURRENCY_ICONS.get(base_ccy)
-    ccy_label = "" if ccy_icon else f" ({base_ccy})"
+    ccy_icon = CURRENCY_ICONS.get(ccy)
+    ccy_label = "" if ccy_icon else f" ({ccy})"
     # whole amounts without ".00", but cents stay visible when there are any (10.12)
-    initial = st.number_input(f"Initial{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=100.0, format=amount_format("initial"),
-                              icon=ccy_icon, key="initial")
-    monthly = st.number_input(f"Monthly{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=50.0, format=amount_format("monthly"),
-                              icon=ccy_icon, key="monthly")
-    if initial == 0 and monthly == 0:
-        st.warning("Set an initial investment or a monthly deposit.")
-    rebalance = st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
-                                     format_func=REBALANCE_LABELS.get, width="stretch", key="rebalance")
+    new_initial = st.number_input(f"Initial{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=100.0,
+                                  format=amount_format("plan_initial"), icon=ccy_icon, key="plan_initial")
+    new_monthly = st.number_input(f"Monthly{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=50.0,
+                                  format=amount_format("plan_monthly"), icon=ccy_icon, key="plan_monthly")
+    st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
+                         format_func=REBALANCE_LABELS.get, width="stretch", key="plan_rebalance")
+    nothing = new_initial == 0 and new_monthly == 0
+    if nothing:
+        st.caption("Set an initial investment or a monthly deposit.")
+    if st.button("Apply", type="primary", key="plan_apply", disabled=nothing):
+        st.session_state.pending_settings = {k: st.session_state[f"plan_{k}"] for k in ("initial", "monthly", "rebalance")}
+        st.session_state.pending_settings["base_ccy"] = st.session_state.plan_ccy
+        st.rerun()
+
 
 examples = storage.list_examples()
 
@@ -728,10 +743,9 @@ with pies_box:
                 load_pie(storage.normalize_pie(raw_content, whole=False))
                 st.rerun()
 
-# ---------------- header: title, settings summary, actions ----------------
+# ---------------- header: title and actions ----------------
 head, actions = st.columns([3, 2], vertical_alignment="bottom")
 head.title("Pie backtester")
-summary_slot = head.empty()  # filled once the results know the last price date
 with actions.container(horizontal=True, horizontal_alignment="right"):
     # A new key after each pick draws a fresh, closed menu. Forcing the old one's state closed instead
     # raced with a quick next click on Examples, which then needed a second click.
@@ -772,6 +786,18 @@ with st.container(border=True, key="period"):
     elif start >= end:
         st.warning("The start date must be before the end date.")
     period_detail = st.container()  # the coverage strip, the late-listing choice and the window sentence
+
+# ---------------- plan: the money settings in one sentence ----------------
+with st.container(border=True, key="plan", horizontal=True, vertical_alignment="center"):
+    st.markdown(f"**Plan** &nbsp; " + md(
+        f"{plan_amount(initial)} to start · "
+        + (f"{plan_amount(monthly)} every month" if monthly else "no monthly deposits")
+        + f" · {base_ccy} · rebalance {rebalance.lower()}"), width="stretch")
+    if st.button("Edit plan"):
+        for k in ("initial", "monthly", "rebalance"):
+            st.session_state[f"plan_{k}"] = st.session_state[k]
+        st.session_state.plan_ccy = base_ccy
+        plan_dialog()
 
 strip = st.container()  # the pie chips; filled after the table so they see this run's edits
 
@@ -1125,13 +1151,6 @@ with period_detail:
                  captions=[captions[o] for o in options], label_visibility="collapsed", on_change=pick_start_rule)
 own = results.get(OWN)
 
-# one line that says what every number below assumes
-summary = (f"{money(initial, base_ccy, True)} + {money(monthly, base_ccy, True)}/month · "
-           f"{start:%Y-%m} to {end:%Y-%m} · rebalance {rebalance.lower()} · {base_ccy}")
-if results:
-    last_price = max(r["total"].index[-1] for r in results.values())
-    summary += f" · prices to {last_price:%d %b %Y}"
-summary_slot.caption(summary.replace("$", "\\$"))  # a bare $ would start Markdown maths
 if results:
     st.divider()
     # each pie keeps the colour of its chip in every chart and table
@@ -1281,7 +1300,7 @@ if results:
             st.download_button("Download daily values (.csv)", csv, "pie_history.csv", "text/csv",
                                icon=":material/download:")
 elif st.session_state.pie and not settings_ok:
-    st.info("Fix the settings in the sidebar to see the backtest.")
+    st.info("Fix the period or the plan above to see the backtest.")
 elif st.session_state.pie and not own_ready:
     st.info("The results appear here once the weights add up to 100% and every ticker is found.")
 
