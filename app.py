@@ -44,7 +44,21 @@ st.session_state.setdefault("pie_name", "My Pie")  # name of the pie in the tabl
 st.session_state.setdefault("own_color", PIE_COLORS[0])
 # every pie keeps its place in the chip row: the pie being edited has own_order, compared ones "order"
 st.session_state.setdefault("own_order", 0)
+# the saved pie the open one came from, {"id", "key"}, to tell "Saved" from "Unsaved changes"; it moves
+# with the pie in and out of the comparison (as "saved_ref" in compared pies)
+st.session_state.setdefault("saved_ref", None)
 st.session_state.setdefault("next_order", 1)
+
+
+def pie_key(name, assets):
+    """What "saved" compares: the name and the assets with their weights. Not the settings: in a
+    comparison they're shared, so they'd differ from the saved pie's own without any edit."""
+    return storage.clean_name(name), tuple(sorted((str(t).upper(), round(float(w), 2)) for t, w in assets))
+
+
+def saved_ref_of(pie):
+    """The saved_ref for a saved pie (as storage returns it)."""
+    return {"id": pie["id"], "key": pie_key(pie["name"], [(a["ticker"], a["weight"]) for a in pie["assets"]])}
 
 
 def new_order():
@@ -104,7 +118,12 @@ def load_pie(cfg):
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                                       for a in st.session_state.pie if a["Ticker"] in previous]},
-                          color=st.session_state.own_color, order=st.session_state.own_order)
+                          color=st.session_state.own_color, order=st.session_state.own_order,
+                          saved_ref=st.session_state.saved_ref)
+    elif previous and previous != loaded and not storage.adds_up(sum(previous.values())):
+        flash("toast", f"'{md(st.session_state.pie_name)}' was closed: its weights add up to "
+                       f"{sum(previous.values()):.2f}%, so it couldn't join the comparison.")
+    st.session_state.saved_ref = already.get("saved_ref") if already else None  # callers that open a saved pie set it
     if moving or already:  # a new pie on screen goes last; a compared one that's opened keeps its place
         st.session_state.own_order = already["order"] if already and "order" in already else new_order()
     st.session_state.own_color = free_color({e.get("color") for e in st.session_state.compare})
@@ -147,8 +166,10 @@ def close_open_pie():
     """✕ on the pie being edited: drop it and open the most recently compared pie instead."""
     if not st.session_state.compare:
         st.session_state.pie = []
+        st.session_state.saved_ref = None
     else:
         e = st.session_state.compare.pop()
+        st.session_state.saved_ref = e.get("saved_ref")
         st.session_state.pie = [{"Ticker": t, "Name": e.get("names", {}).get(t, t), "Weight %": w}
                                 for t, w in e["weights"].items()]
         st.session_state.pie_name = e["name"]
@@ -166,6 +187,7 @@ def open_compared(i):
         st.session_state.compare[i] = {
             "name": st.session_state.pie_name, "weights": current, "color": st.session_state.own_color,
             "order": st.session_state.own_order,  # the two swap places in the chip row
+            "saved_ref": st.session_state.saved_ref,
             "names": {a["Ticker"]: a.get("Name") or a["Ticker"] for a in st.session_state.pie if a["Ticker"] in current}}
     else:
         st.session_state.compare.pop(i)
@@ -174,6 +196,7 @@ def open_compared(i):
     st.session_state.pie_name = e["name"]
     st.session_state.own_color = e.get("color") or st.session_state.own_color
     st.session_state.own_order = e.get("order", new_order())
+    st.session_state.saved_ref = e.get("saved_ref")
     st.session_state.fix_report = None
     pie_changed()
 
@@ -229,8 +252,8 @@ def screen_reader_text(text):
 
 
 def flash(kind, msg):
-    """Show a message after the st.rerun() that usually follows."""
-    st.session_state.flash = (kind, msg)
+    """Show a message after the st.rerun() that usually follows. Several can queue up."""
+    st.session_state.setdefault("flashes", []).append((kind, msg))
 
 
 def copy_button(text, label="Copy link"):
@@ -408,7 +431,7 @@ def prices_for(tickers, start, end, base):
     return prices.loc[:pd.Timestamp(end)], {"currencies": currencies}
 
 
-def add_to_comparison(cfg, color=None, order=None):
+def add_to_comparison(cfg, color=None, order=None, saved_ref=None):
     """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
@@ -437,7 +460,7 @@ def add_to_comparison(cfg, color=None, order=None):
         n += 1
     color = color or free_color({e.get("color") for e in others} | {st.session_state.own_color})
     others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color,
-                   "order": new_order() if order is None else order})
+                   "order": new_order() if order is None else order, "saved_ref": saved_ref})
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -517,6 +540,7 @@ def save_dialog():
             else:
                 saved = active_storage.save_pie(payload, user_id=user_id)
             st.session_state.pie_name = saved["name"]
+            st.session_state.saved_ref = saved_ref_of(saved)
             flash("success", f"{'Updated' if same else 'Saved'} pie '{md(saved['name'])}'.")
             st.rerun()
         except Exception as ex:
@@ -538,9 +562,26 @@ def edit_dialog(pie):
         if active_storage.update_pie(pie["id"], user_id=user_id, name=name, is_public=is_pub):
             if st.session_state.pie_name == pie["name"]:  # the open pie came from this one
                 st.session_state.pie_name = storage.clean_name(name)
+            ref = st.session_state.saved_ref
+            if ref and ref["id"] == pie["id"]:  # renamed, still saved
+                st.session_state.saved_ref = {"id": ref["id"], "key": (storage.clean_name(name), ref["key"][1])}
             flash("success", f"Updated '{md(storage.clean_name(name))}'" + (" (public)." if is_pub else "."))
             st.rerun()
         st.error(f"Could not update pie '{md(pie['name'])}'.")
+
+
+@st.dialog("Delete pie")
+def delete_dialog(pie):
+    """Deleting can't be undone, so it asks first."""
+    st.write(f"Delete '{md(pie['name'])}' from your saved pies? This can't be undone.")
+    if st.button("Delete", type="primary", key="delete_confirm"):
+        if active_storage.delete_pie(pie["id"], user_id=user_id):
+            st.session_state.clear_saved_pick = True
+            if (st.session_state.saved_ref or {}).get("id") == pie["id"]:
+                st.session_state.saved_ref = None  # still open, but no longer saved
+            flash("success", f"Deleted pie '{md(pie['name'])}'.")
+            st.rerun()
+        st.error(f"Could not delete pie '{md(pie['name'])}'.")
 
 
 # ---------------- sidebar: settings first, then your pies, then the account ----------------
@@ -615,6 +656,7 @@ with pies_box:
             if picked and picked != st.session_state.get("opened_saved_id"):
                 if load_pie(by_id[picked]):
                     st.session_state.opened_saved_id, st.session_state.clear_saved_pick = picked, False
+                    st.session_state.saved_ref = saved_ref_of(by_id[picked])
                 else:
                     st.session_state.clear_saved_pick = True  # not opened: don't show it as picked
                 st.rerun()
@@ -625,11 +667,7 @@ with pies_box:
                     if st.button("Edit", key="edit_saved", width="stretch"):
                         edit_dialog(target_sp)
                     if st.button("Delete", key="delete_saved", width="stretch"):
-                        if active_storage.delete_pie(target_sp["id"], user_id=user_id):
-                            st.session_state.clear_saved_pick = True
-                            flash("success", f"Deleted pie '{md(target_sp['name'])}'.")
-                            st.rerun()
-                        st.error(f"Could not delete pie '{md(target_sp['name'])}'.")
+                        delete_dialog(target_sp)
         else:
             st.caption("No saved pies yet. Use Save at the top to keep a pie.")
 
@@ -673,8 +711,7 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
         save_dialog()
     share_pop = st.popover("Share", icon=":material/share:", disabled=not st.session_state.pie)
 
-if "flash" in st.session_state:
-    _kind, _msg = st.session_state.pop("flash")
+for _kind, _msg in st.session_state.pop("flashes", []):
     getattr(st, _kind)(_msg)
 
 OWN = f"{st.session_state.pie_name or 'My Pie'} (editing)"  # the pie in the table
@@ -871,7 +908,19 @@ with strip:
                         else:
                             st.session_state.compare.pop(int(k))
                         st.rerun()
-            st.caption(f"{len(chips)} of {MAX_COMPARED}" + (" · click a pie to edit it" if len(chips) > 1 else ""))
+            # whether the pie being edited matches its saved version
+            ref = st.session_state.saved_ref
+            if not st.session_state.pie:
+                status = ""
+            elif not ref:
+                status = "Not saved yet · "
+            elif pie_key(st.session_state.pie_name, [(a["Ticker"], a["Weight %"] or 0)
+                                                     for a in st.session_state.pie]) == ref["key"]:
+                status = "Saved · "
+            else:
+                status = "Unsaved changes · "
+            st.caption(status + f"{len(chips)} of {MAX_COMPARED} pies"
+                       + (" · click a pie to edit it" if len(chips) > 1 else ""))
             if st.session_state.compare and st.button("Clear comparison", type="tertiary"):
                 st.session_state.compare = []
                 st.rerun()

@@ -98,7 +98,9 @@ def test_local_storage_keeps_the_guest_account(requests_log):
     assert requests_log == []
 
 
-def test_signed_in_owner_can_delete_only_through_an_owner_scoped_request(requests_log, monkeypatch):
+def test_signed_in_owner_gets_delete_with_a_confirmation(requests_log, monkeypatch):
+    # The owner-scoped delete request itself is tested in test_supabase.py: AppTest can't click inside
+    # a dialog (dialogs rerun on their own), so the confirmed delete is covered by the browser tests.
     import auth
 
     own = dict(PUBLIC_PIE, id="p-mine", name="My pie", owner_id="google:123")
@@ -109,5 +111,5 @@ def test_signed_in_owner_can_delete_only_through_an_owner_scoped_request(request
     at.selectbox(key="saved_pick").select("p-mine").run()
     [delete] = [b for b in at.button if b.label == "Delete"]
     delete.click().run()
-    assert ("delete", {"id": "eq.p-mine", "owner_id": "eq.google:123"}) in requests_log
-    assert any("Could not delete" in e.value for e in at.error)  # the fake deleted nothing
+    assert at.button(key="delete_confirm").label == "Delete"  # it asks first
+    assert not any(method == "delete" for method, _ in requests_log)  # nothing deleted yet

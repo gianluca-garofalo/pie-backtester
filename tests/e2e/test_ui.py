@@ -136,7 +136,7 @@ def test_save_load_delete(app):
     expect(app.page.get_by_text("Updated 'E2E renamed' (public).")).to_be_visible()
     assert app.chips() == ["E2E renamed (editing)"]  # the open pie follows the new name
 
-    app.click("Delete", root=app.sidebar, exact=True)
+    app.delete_saved()
     expect(app.page.get_by_text("Deleted pie 'E2E renamed'.")).to_be_visible()
     expect(app.page.get_by_role("option", name="E2E renamed (3 assets)")).to_have_count(0)
 
@@ -296,7 +296,7 @@ def test_saving_under_the_same_name_updates_the_pie(app):
     app.click("Clear pie")
     app.choose("Saved pies", "E2E update test (2 assets)")
     assert [float(r[1]) for r in app.rows()] == [70, 30]
-    app.click("Delete", root=app.sidebar, exact=True)
+    app.delete_saved()
 
 
 def test_click_a_column_name_to_sort(app):
@@ -361,10 +361,10 @@ def test_rename_cannot_take_another_pies_name(app):
     expect(dialog.get_by_text("You already have a pie called 'E2E dup A'. Pick another name.")).to_be_visible()
     expect(dialog.get_by_role("button", name="Save changes")).to_be_disabled()
     app.page.keyboard.press("Escape")
-    app.click("Delete", root=app.sidebar, exact=True)  # tidy up: B is still picked
+    app.delete_saved()  # tidy up: B is still picked
     app.open_sidebar_section("Saved pies")
     app.choose("Saved pies", "E2E dup A (1 asset)")
-    app.click("Delete", root=app.sidebar, exact=True)
+    app.delete_saved()
 
 
 def test_adding_an_asset_twice_says_so(app):
@@ -437,3 +437,19 @@ def test_charts_have_a_text_alternative(app):
     app.load_example("All-World ETF")
     text = app.page.locator(".sr-only").first.inner_text()
     assert text.startswith("Growth chart: All-World ETF ends at €") and "you put in €" in text
+
+
+def test_the_chip_row_says_whether_the_pie_is_saved(app):
+    app.load_example("60/40 Stocks & Bonds")
+    expect(app.page.get_by_text("Not saved yet · 1 of 5 pies")).to_be_visible()
+    app.save_pie("E2E status")
+    expect(app.page.get_by_text("Saved · 1 of 5 pies")).to_be_visible()
+    app.edit_weight(0, 70)
+    app.edit_weight(1, 30)
+    expect(app.page.get_by_text("Unsaved changes · 1 of 5 pies")).to_be_visible()
+    app.save_pie("E2E status")  # updates it
+    expect(app.page.get_by_text("Saved · 1 of 5 pies")).to_be_visible()
+    app.open_sidebar_section("Saved pies")
+    app.choose("Saved pies", "E2E status (2 assets)")
+    app.delete_saved()
+    expect(app.page.get_by_text("Not saved yet · 1 of 5 pies")).to_be_visible()  # still open, no longer saved

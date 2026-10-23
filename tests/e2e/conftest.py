@@ -140,6 +140,12 @@ class App:
         dialog.get_by_role("button", name=re.compile("^(Save|Update) pie$")).click()
         self.wait()
 
+    def delete_saved(self):
+        """Delete the saved pie that's picked in the sidebar, confirming in the dialog."""
+        self.click("Delete", root=self.sidebar, exact=True)
+        self.page.get_by_role("dialog").get_by_role("button", name="Delete").click()
+        self.wait()
+
     def open_sidebar_section(self, title):
         section = self.sidebar.get_by_test_id("stExpander").filter(has_text=title)
         if section.locator("details").get_attribute("open") is None:

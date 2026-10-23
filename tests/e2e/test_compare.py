@@ -160,3 +160,14 @@ def test_phone_layout(phone):
     expect(copy).to_have_text("Copy link")
     copy.click()  # a visible copy button, also on touch screens
     expect(copy).to_have_text("Copied ✓")
+
+
+def test_an_unfinished_pie_that_cant_join_says_so(app):
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 30)  # 70%: can't be compared
+    app.page.get_by_role("button", name="Examples").click()
+    app.page.get_by_test_id("stPopoverBody").get_by_role("button", name="All-World ETF", exact=True).click()
+    expect(app.page.get_by_text("'60/40 Stocks & Bonds' was closed: its weights add up to 70.00%")).to_be_visible(
+        timeout=20_000)
+    app.wait()
+    assert app.chips() == ["All-World ETF (editing)"]
