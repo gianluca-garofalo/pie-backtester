@@ -78,6 +78,8 @@ def test_a_pie_with_later_assets_starts_later(app):
     # All-World lists later than Tech Leaders, so it starts with Tech Leaders' value on that day
     expect(app.page.get_by_text("'All-World ETF (editing)' starts on 2019-07-29 (VWCE.DE has no earlier prices) with $")).to_be_visible()
     expect(app.page.get_by_text("Every pie had")).to_be_visible()  # the same amount put in
+    # the tiles say which pie they're about
+    expect(app.page.get_by_text("(the pie you're editing)")).to_be_visible()
 
 
 def test_every_loaded_pie_can_be_removed(app):

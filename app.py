@@ -863,6 +863,10 @@ if results:
         dd_own = res["twr"] / res["twr"].cummax() - 1
         deposits = int((res["invested"].diff() > 0).sum())
         gain = m["profit"]
+        if len(results) > 1:  # with several pies on the charts, say which one the tiles describe
+            st.html(f'<div style="font-weight:600;color:{st.session_state.own_color}">● '
+                    f'{html.escape(st.session_state.pie_name)} <span style="opacity:.7;font-weight:400">'
+                    f'(the pie you\'re editing)</span></div>')
         with st.container(horizontal=True):
             # the gain on money put in is what an account shows; Return (time-weighted) is the pie's own growth
             on_put_in = f" ({gain / m['invested'] * 100:+.0f}%)" if m["invested"] > 0 else ""
