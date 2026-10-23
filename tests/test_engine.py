@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 import engine
@@ -189,3 +190,15 @@ def test_etcs_count_as_funds_when_ranking():
     hits = [dict(_hit("IGLN.L", name="iShares Physical Gold ETC", type_="EQUITY"), currency="USD"),
             dict(_hit("EGLN.L", name="iShares Physical Gold ETC", type_="EQUITY"), currency="EUR")]
     assert [h["symbol"] for h in engine.rank_listings(hits, "EUR")] == ["EGLN.L", "IGLN.L"]
+
+
+def test_no_infinite_return_before_the_first_deposit():
+    # initial 0 and a tiny deposit split three ways: the first return used to be -inf
+    days = pd.bdate_range("2020-01-01", "2020-04-30")
+    prices = pd.DataFrame({t: np.linspace(10, 12, len(days)) * k for t, k in (("A", 1), ("B", 3), ("C", 7))},
+                          index=days)
+    res = engine.simulate_pie(prices, {"A": 33.33, "B": 33.33, "C": 33.34}, "2020-01-01", 0, 0.5)
+    m = engine.metrics(res)
+    assert np.isfinite(res["daily_r"]).all()
+    assert all(np.isfinite(m[k]) for k in ("twr_total", "max_drawdown", "volatility"))
+    assert m["twr_total"] > 0  # the prices only rose

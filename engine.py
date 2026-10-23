@@ -258,7 +258,10 @@ def simulate_pie(prices: pd.DataFrame, weights: dict[str, float], start, initial
     flows_s = pd.Series(flows, index=idx)
 
     # time-weighted return index (removes the effect of contributions)
-    daily_r = (total - flows_s) / total.shift(1) - 1
+    # No return while nothing is invested yet (initial 0, waiting for the first deposit): dividing by
+    # a value of 0 gave inf, or -inf from a rounding remainder of a tiny deposit split three ways.
+    prev = total.shift(1)
+    daily_r = ((total - flows_s) / prev - 1).where(prev > 1e-9, 0.0)
     daily_r.iloc[0] = 0.0
     twr = (1 + daily_r).cumprod()
 
