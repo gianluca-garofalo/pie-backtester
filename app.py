@@ -1133,22 +1133,24 @@ def coverage_figure(names):
     the results use (in the pie's colour)."""
     fig = go.Figure()
     t0, t1 = pd.Timestamp(start), pd.Timestamp(end)
-    for n in names:
-        label = html.escape(plain_name(n))
-        fig.add_trace(go.Scatter(x=[t0, t1], y=[label] * 2, mode="lines",
+    labels = []
+    for row, n in enumerate(names):  # one numbered row per pie: two cut names can be the same
+        name = plain_name(n)
+        labels.append(html.escape(name if len(name) <= 24 else name[:23] + "…"))  # a long name squeezed the bars
+        fig.add_trace(go.Scatter(x=[t0, t1], y=[row] * 2, mode="lines",
                                  line=dict(color="rgba(138,141,150,.25)", width=10)))
         if n in late:
             ticker, listed = max(late[n].items(), key=lambda x: x[1])
             listed = pd.Timestamp(min(listed, end))
-            fig.add_trace(go.Scatter(x=[t0, listed], y=[label] * 2, mode="lines",
+            fig.add_trace(go.Scatter(x=[t0, listed], y=[row] * 2, mode="lines",
                                      line=dict(color="#8a8d96", width=2, dash="dot")))
-            fig.add_annotation(x=t0 + (listed - t0) / 2, y=label, yshift=11, showarrow=False,
+            fig.add_annotation(x=t0 + (listed - t0) / 2, y=row, yshift=11, showarrow=False,
                                text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
         if n in results:
-            fig.add_trace(go.Scatter(x=[results[n]["total"].index[0], t1], y=[label] * 2, mode="lines",
+            fig.add_trace(go.Scatter(x=[results[n]["total"].index[0], t1], y=[row] * 2, mode="lines",
                                      line=dict(color=pie_colors[n], width=10)))
     fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
-                      yaxis=dict(autorange="reversed"), xaxis=dict(range=[t0, t1]))
+                      yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels), xaxis=dict(range=[t0, t1]))
     return fig
 
 

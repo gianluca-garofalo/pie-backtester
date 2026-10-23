@@ -245,3 +245,10 @@ def test_remove_can_be_undone(app):
     assert app.cards() == ["All-World ETF", "Tech Leaders"]
     assert [app.card(n).evaluate("e => getComputedStyle(e).borderTopColor") for n in app.cards()] == \
         [colors[0], colors[2]]  # same colours as before
+
+
+def test_a_long_name_doesnt_squeeze_the_coverage_strip(app):
+    app.open("?p=" + "L" * 60 + "~EUR~2015-01-01~~1000~100~N~w~VWCE.DE:100")
+    app.load_example("Tech Leaders")
+    labels = app.page.locator(".st-key-period [data-testid=stPlotlyChart] .ytick text").all_text_contents()
+    assert labels and max(len(t) for t in labels) <= 25, labels  # cut with "…"
