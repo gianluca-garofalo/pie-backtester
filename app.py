@@ -66,6 +66,7 @@ def load_pie(cfg):
     The pie being replaced moves to the comparison (if it's complete and not the same pie),
     so loading several pies one after another compares them; ✕ removes one.
     """
+    st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
     if previous and abs(sum(previous.values()) - 100) <= 0.01 and previous != loaded:
@@ -476,20 +477,31 @@ with pies_box:
             def is_mine(p):
                 return not shared_storage or p.get("owner_id") == user_id
 
-            sp_names = [f"{p['name']} ({len(p['assets'])} assets)" + ("" if is_mine(p) else " · public")
-                        for p in saved_pies]
-            sel_sp_idx = st.selectbox("Saved pies", range(len(sp_names)), format_func=lambda i: sp_names[i],
-                                      label_visibility="collapsed")
-            target_sp = saved_pies[sel_sp_idx]
-            with st.container(horizontal=True, gap="small"):
-                if st.button("Load", key="load_saved", width="stretch"):
-                    load_pie(target_sp)
-                    st.rerun()
-                if is_mine(target_sp):
+            by_id = {p["id"]: p for p in saved_pies}
+            if st.session_state.pop("clear_saved_pick", False):  # deleted, or another pie was opened
+                st.session_state.saved_pick = st.session_state.opened_saved_id = None
+            elif st.session_state.get("saved_pick") not in by_id:
+                # a rename changes the option's label, and Streamlit then resets the box: keep the open pie
+                opened = st.session_state.get("opened_saved_id")
+                st.session_state.saved_pick = opened if opened in by_id else None
+            # picking a pie opens it, like picking a file; Edit and Delete act on the picked pie
+            picked = st.selectbox(
+                "Saved pies", list(by_id), key="saved_pick", label_visibility="collapsed",
+                placeholder="Pick a pie to open",
+                format_func=lambda i: f"{by_id[i]['name']} ({len(by_id[i]['assets'])} assets)"
+                                      + ("" if is_mine(by_id[i]) else " · public"))
+            if picked and picked != st.session_state.get("opened_saved_id"):
+                load_pie(by_id[picked])
+                st.session_state.opened_saved_id, st.session_state.clear_saved_pick = picked, False
+                st.rerun()
+            target_sp = by_id.get(picked)
+            if target_sp and is_mine(target_sp):
+                with st.container(horizontal=True, gap="small"):
                     if st.button("Edit", key="edit_saved", width="stretch", help="Rename, or make public"):
                         edit_dialog(target_sp)
                     if st.button("Delete", key="delete_saved", width="stretch"):
                         if active_storage.delete_pie(target_sp["id"], user_id=user_id):
+                            st.session_state.clear_saved_pick = True
                             flash("success", f"Deleted pie '{target_sp['name']}'.")
                             st.rerun()
                         st.error(f"Could not delete pie '{target_sp['name']}'.")

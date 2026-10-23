@@ -80,7 +80,8 @@ def test_anonymous_visitor_cannot_save_or_delete(requests_log):
     at.button(key="ex_pop_0").click().run()  # an example pie, from the Examples menu
     assert at.session_state.pie
     assert at.button(key="save_open").disabled  # saving needs a signed-in user
-    assert "Load" in labels(at)
+    at.selectbox(key="saved_pick").select("p-other").run()  # picking a pie opens it
+    assert [a["Ticker"] for a in at.session_state.pie] == ["VWCE.DE"]
     assert "Delete" not in labels(at) and "Edit" not in labels(at)  # someone else's public pie
 
 
@@ -105,6 +106,7 @@ def test_signed_in_owner_can_delete_only_through_an_owner_scoped_request(request
     monkeypatch.setattr(auth, "get_current_user",
                         lambda allow_guest=True: {"id": "google:123", "name": "Me", "email": "me@example.com"})
     at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
+    at.selectbox(key="saved_pick").select("p-mine").run()
     [delete] = [b for b in at.button if b.label == "Delete"]
     delete.click().run()
     assert ("delete", {"id": "eq.p-mine", "owner_id": "eq.google:123"}) in requests_log

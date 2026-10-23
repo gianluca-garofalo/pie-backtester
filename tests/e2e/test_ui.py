@@ -109,8 +109,7 @@ def test_save_load_delete(app):
 
     app.click("Clear pie")
     app.open_sidebar_section("Saved pies")
-    app.choose("Saved pies", "E2E save test (3 assets)")
-    app.click("Load", root=app.sidebar, exact=True)
+    app.choose("Saved pies", "E2E save test (3 assets)")  # picking it opens it
     assert app.tickers() == [a["ticker"] for a in EXAMPLES["Three-Fund Portfolio"]["assets"]]
     assert app.chips() == ["E2E save test (editing)"]
 
@@ -281,7 +280,6 @@ def test_saving_under_the_same_name_updates_the_pie(app):
 
     app.click("Clear pie")
     app.choose("Saved pies", "E2E update test (2 assets)")
-    app.click("Load", root=app.sidebar, exact=True)
     assert [float(r[1]) for r in app.rows()] == [70, 30]
     app.click("Delete", root=app.sidebar, exact=True)
 
