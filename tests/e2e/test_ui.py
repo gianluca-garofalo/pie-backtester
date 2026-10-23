@@ -1,4 +1,5 @@
 import json
+import urllib.parse
 
 import pytest
 from playwright.sync_api import expect
@@ -327,3 +328,12 @@ def test_weights_keep_two_decimals(app):
     app.edit_weight(0, 39.99)
     assert float(app.rows()[0][1]) == 39.99  # used to become 39.9
     expect(app.page.get_by_text("Total 79.99% · 20.01% left")).to_be_visible()
+
+
+def test_a_crafted_name_shows_as_typed(app):
+    # pie names come from links and files: no bold, links or maths in someone else's name
+    name = "**Bold** [x](http://evil.example) $a$ ~b~"
+    app.open("?p=" + urllib.parse.quote_plus(name + "~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:100", safe="~:,.-"))
+    chip = app.page.locator(".st-key-chip_name_own")
+    expect(chip).to_contain_text(name)
+    assert chip.locator("strong, a, .katex").count() == 0

@@ -2,7 +2,9 @@
 
 Run with:  streamlit run app.py
 """
+import html
 import json
+import re
 from pathlib import Path
 from datetime import date
 
@@ -110,7 +112,7 @@ def load_pie(cfg):
         # joining a comparison: keep the settings every compared pie uses, and say what this one had
         saved_with = [SETTING_WORDS[k](v) for k, v in pending.items() if st.session_state.get(k) != v]
         if saved_with:
-            flash("toast", f"Kept your settings. '{st.session_state.pie_name}' was saved with "
+            flash("toast", f"Kept your settings. '{md(st.session_state.pie_name)}' was saved with "
                            f"{', '.join(saved_with)}.")
     else:
         st.session_state.pending_settings = pending
@@ -168,6 +170,15 @@ def shades(color, n):
         f = 0.5 * i / max(n - 1, 1)  # mix in up to 50% white, so the lightest still shows on white
         out.append("#%02x%02x%02x" % tuple(round(c + (255 - c) * f) for c in (r, g, b)))
     return out
+
+
+MD_SPECIAL = re.compile(r"([\\`*_{}\[\]()#+\-.!|~<>$:])")  # ":" too, or "http://…" becomes a link
+
+
+def md(text):
+    """Text shown as typed in Markdown (labels, captions, messages): pie names come from people and
+    links, so their * _ [ ] $ ~ must not turn into formatting, links or maths."""
+    return MD_SPECIAL.sub(r"\\\1", str(text))
 
 
 def flash(kind, msg):
@@ -306,7 +317,7 @@ def add_to_comparison(cfg, color=None):
     """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
-        flash("warning", f"'{cfg.get('name') or 'Pie'}' wasn't kept: you can compare up to {MAX_COMPARED} "
+        flash("warning", f"'{md(cfg.get('name') or 'Pie')}' wasn't kept: you can compare up to {MAX_COMPARED} "
                          "pies, including yours. Remove one with ✕ first.")
         return
     weights, names = {}, {}
@@ -393,7 +404,7 @@ def save_dialog():
     same = next((p for p in mine if p["name"].strip().lower() == name.strip().lower()), None)
     is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")))
     if same:
-        st.caption(f"You already have a saved pie called '{same['name']}'. Saving updates it. "
+        st.caption(f"You already have a saved pie called '{md(same['name'])}'. Saving updates it. "
                    "To keep both, change the name.")
     if st.button("Update pie" if same else "Save pie", type="primary", key="save_confirm",
                  disabled=not name.strip()):
@@ -404,7 +415,7 @@ def save_dialog():
             else:
                 saved = active_storage.save_pie(payload, user_id=user_id)
             st.session_state.pie_name = saved["name"]
-            flash("success", f"{'Updated' if same else 'Saved'} pie '{saved['name']}'.")
+            flash("success", f"{'Updated' if same else 'Saved'} pie '{md(saved['name'])}'.")
             st.rerun()
         except Exception as ex:
             st.error(f"Failed to save pie: {ex}")
@@ -420,9 +431,9 @@ def edit_dialog(pie):
         if active_storage.update_pie(pie["id"], user_id=user_id, name=name, is_public=is_pub):
             if st.session_state.pie_name == pie["name"]:  # the open pie came from this one
                 st.session_state.pie_name = name.strip()
-            flash("success", f"Updated '{name.strip()}'" + (" (public)." if is_pub else "."))
+            flash("success", f"Updated '{md(name.strip())}'" + (" (public)." if is_pub else "."))
             st.rerun()
-        st.error(f"Could not update pie '{pie['name']}'.")
+        st.error(f"Could not update pie '{md(pie['name'])}'.")
 
 
 # ---------------- sidebar: settings first, then your pies, then the account ----------------
@@ -501,9 +512,9 @@ with pies_box:
                     if st.button("Delete", key="delete_saved", width="stretch"):
                         if active_storage.delete_pie(target_sp["id"], user_id=user_id):
                             st.session_state.clear_saved_pick = True
-                            flash("success", f"Deleted pie '{target_sp['name']}'.")
+                            flash("success", f"Deleted pie '{md(target_sp['name'])}'.")
                             st.rerun()
-                        st.error(f"Could not delete pie '{target_sp['name']}'.")
+                        st.error(f"Could not delete pie '{md(target_sp['name'])}'.")
         else:
             st.caption("No saved pies yet. Use Save at the top to keep a pie.")
 
@@ -534,7 +545,7 @@ with actions.container(horizontal=True, horizontal_alignment="right"):
         st.session_state.examples_pop = False  # close it once a pie is loaded
     with st.popover("Examples", icon=":material/auto_awesome:", key="examples_pop", on_change="rerun"):
         for i, ex in enumerate(examples):
-            if st.button(ex["name"], key=f"ex_pop_{i}", width="stretch"):
+            if st.button(md(ex["name"]), key=f"ex_pop_{i}", width="stretch"):
                 load_pie(ex)
                 st.session_state.close_examples = True
                 st.rerun()
@@ -714,13 +725,13 @@ with strip:
                 with st.container(key=f"chip_{k}", border=True, horizontal=True, width="content",
                                   vertical_alignment="center", gap=None):
                     if k == "own":
-                        st.button(name, key="chip_name_own", type="tertiary", help="The pie in the table below")
-                    elif st.button(name, key=f"chip_name_{k}", type="tertiary", disabled=not own_complete,
+                        st.button(md(name), key="chip_name_own", type="tertiary", help="The pie in the table below")
+                    elif st.button(md(name), key=f"chip_name_{k}", type="tertiary", disabled=not own_complete,
                                    help="Edit this pie" if own_complete else
                                    "Finish the pie you're editing (weights at 100%) before switching"):
                         open_compared(int(k))
                         st.rerun()
-                    if st.button(f"Remove {name}", key=f"chip_x_{k}", type="tertiary", icon=":material/close:",
+                    if st.button(f"Remove {md(name)}", key=f"chip_x_{k}", type="tertiary", icon=":material/close:",
                                  help=f"Remove {name}"):
                         if k == "own":
                             close_open_pie()
@@ -755,7 +766,7 @@ if settings_ok and entries:
                 if name == OWN:
                     st.error(f"Backtest failed: {e}")
                 else:
-                    st.warning(f"'{name}' is left out: {e}")
+                    st.warning(f"'{md(name)}' is left out: {md(e)}")
         # A pie that starts later begins with the average value of the pies that started earlier, as if
         # the money had moved into it then, so the lines and "You put in" stay comparable. Its Return,
         # Per year and Worst fall still cover only its own period.
@@ -849,11 +860,11 @@ if results:
         fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
                                  line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
         for name, r in results.items():
-            fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=name, hovertemplate="%{y:,.0f}",
+            fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=html.escape(name), hovertemplate="%{y:,.0f}",
                                      line=dict(color=colors[name], width=2.6 if name == OWN else 1.8)),
                           row=1, col=1)
             dd = window((r["twr"] / r["twr"].cummax() - 1) * 100)
-            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=name, showlegend=False, hovertemplate="%{y:.1f}%",
+            fig.add_trace(go.Scatter(x=dd.index, y=dd, name=html.escape(name), showlegend=False, hovertemplate="%{y:.1f}%",
                                      line=dict(color=colors[name], width=1.2),
                                      fill="tozeroy" if len(results) == 1 else None), row=2, col=1)
 
@@ -871,7 +882,7 @@ if results:
             y_prev = y
             label = name.removesuffix(" (editing)")
             fig.add_annotation(x=1.005, y=y, xref="x domain", yref="y domain", xanchor="left", showarrow=False,
-                               text=f"<b>{label}</b> {money(value, base_ccy, True)}", font=dict(color=color, size=12))
+                               text=f"<b>{html.escape(label)}</b> {money(value, base_ccy, True)}", font=dict(color=color, size=12))
         fig.update_yaxes(type="log" if scale == "Log" else "linear", range=[lo, hi], title=base_ccy, row=1, col=1)
         fig.update_yaxes(title="% below high", row=2, col=1)
         fig.update_layout(height=560, hovermode="x unified", showlegend=False, margin=dict(t=10, b=10, r=190))
@@ -881,11 +892,11 @@ if results:
             if n in joined:
                 why = (f" ({', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} no earlier prices)"
                        if late[n] else "")
-                st.caption(f"'{n}' starts on {d}{why} with {money(joined[n][1], base_ccy)}: the average value of "
-                           "the pies that started earlier, as if the money had moved into it then.".replace("$", "\\$"))
+                st.caption(f"'{md(n)}' starts on {d}{why} with {md(money(joined[n][1], base_ccy))}: the average "
+                           "value of the pies that started earlier, as if the money had moved into it then.")
             elif n != OWN and d > start + pd.Timedelta(days=7):
-                st.caption(f"'{n}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
-                           "no earlier prices." if late[n] else f"'{n}' starts on {d}.")
+                st.caption(f"'{md(n)}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
+                           "no earlier prices." if late[n] else f"'{md(n)}' starts on {d}.")
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
                    "predict future returns.")
