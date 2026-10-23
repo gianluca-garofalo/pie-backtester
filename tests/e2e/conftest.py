@@ -176,7 +176,7 @@ class App:
         for _ in range(40):
             out = []
             for row in (grid or self.grid).locator("tbody [role=row]").all():
-                cells = [c.inner_text().strip() for c in row.locator("[role=gridcell]").all()]
+                cells = [c.inner_text(timeout=2000).strip() for c in row.locator("[role=gridcell]").all()]
                 if any(cells):
                     out.append(cells)
             if out:
@@ -188,7 +188,10 @@ class App:
         """Poll read() until it returns expected; tables update a moment after the rerun ends."""
         value = None
         for _ in range(timeout // 250):
-            value = read()
+            try:
+                value = read()
+            except Exception as e:  # a table cell that went away while the table was redrawn
+                value = e
             if value == expected:
                 return value
             self.page.wait_for_timeout(250)

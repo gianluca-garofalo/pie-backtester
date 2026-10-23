@@ -68,19 +68,54 @@ def test_compared_pies_share_the_sidebar_settings(app):
     expect(app.page.get_by_text("Every pie had €5,000.00 put in.")).to_be_visible()
 
 
-def test_a_pie_with_later_assets_starts_later(app):
+def start_choice(app):
+    return app.page.get_by_role("radiogroup", name="When the pies start")
+
+
+def test_late_listing_choice_card(app):
     app.load_example("Tech Leaders")
     app.load_example("All-World ETF")
     app.set_date("From", "2015-01-01")
+    # VWCE.DE lists in 2019, so by default every pie starts then: same days, same money, rankable
+    expect(start_choice(app).get_by_role("radio", name="Start all pies on 29 Jul 2019")).to_be_checked()
     app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
-                   {"All-World ETF (editing) †": "2019-07-29", "Tech Leaders": "2015-12-03"})  # † joined later
-    expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()
-    # All-World lists later than Tech Leaders, so it starts with Tech Leaders' value on that day
-    expect(app.page.get_by_text("'All-World ETF (editing)' starts on 2019-07-29 (VWCE.DE has no earlier prices) with $")).to_be_visible()
-    expect(app.page.get_by_text("Every pie had")).to_be_visible()  # the same amount put in
-    expect(app.page.get_by_text("† Started later, with the average value")).to_be_visible()
-    # the tiles say which pie they're about
-    expect(app.page.get_by_text("(the pie you're editing)")).to_be_visible()
+                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2019-07-29"})
+    expect(app.page.get_by_text("Every number and chart below covers 29 Jul 2019 – ")).to_be_visible()
+    expect(app.page.get_by_text("VWCE.DE has prices from 29 Jul 2019")).to_be_visible()
+
+    start_choice(app).get_by_text("Each pie from its own first price").click()
+    app.wait()
+    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
+                   {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
+
+    start_choice(app).get_by_text("Start on 1 Jan 2015, holding cash until VWCE.DE lists").click()
+    app.wait()
+    app.eventually(lambda: {r[0]: r[1] for r in comparison_rows(app)},
+                   {"All-World ETF (editing)": "2015-01-01", "Tech Leaders": "2015-01-01"})
+    expect(start_choice(app).get_by_text("changes the strategy")).to_be_visible()
+    expect(app.page.get_by_text("Started later, with the average value")).to_have_count(0)  # that rule is gone
+
+
+def test_start_choice_is_kept_while_the_card_is_hidden(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2016-01-01")
+    start_choice(app).get_by_text("Each pie from its own first price").click()
+    app.wait()
+    app.remove_pie("All-World ETF (editing)")  # nothing lists late now, so the card goes
+    expect(start_choice(app)).to_have_count(0)
+    app.load_example("All-World ETF")
+    expect(start_choice(app).get_by_role("radio", name="Each pie from its own first price")).to_be_checked()
+
+
+def test_a_pie_without_prices_in_the_period_says_why(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2018-01-01")
+    app.set_date("To", "2019-01-01")
+    expect(app.page.get_by_text("No prices in this period: VWCE.DE starts 29 Jul 2019")).to_be_visible()
+    # the other pie still shows, over its own days
+    expect(app.page.get_by_text("Every number and chart below covers 2 Jan 2018 – 31 Dec 2018")).to_be_visible()
 
 
 def test_every_loaded_pie_can_be_removed(app):

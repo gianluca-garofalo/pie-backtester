@@ -345,17 +345,6 @@ def money(x: float, ccy: str, compact: bool = False) -> str:
     return f"−{text}" if x < 0 else text
 
 
-def value_on(earlier: list[dict], day) -> tuple[float, float]:
-    """The average value and amount put in of earlier-starting pies on a day.
-
-    A compared pie that starts later begins with this value, as if you had moved the money
-    into it then, so every pie's line and "You put in" stay comparable.
-    """
-    values = [float(r["total"].asof(pd.Timestamp(day))) for r in earlier]
-    invested = [float(r["invested"].asof(pd.Timestamp(day))) for r in earlier]
-    return sum(values) / len(values), sum(invested) / len(invested)
-
-
 def metrics(res: dict) -> dict:
     total, invested, twr, r = res["total"], res["invested"], res["twr"], res["daily_r"]
     years = max((total.index[-1] - total.index[0]).days / 365.25, 1e-9)

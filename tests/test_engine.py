@@ -140,15 +140,6 @@ def test_asset_name_takes_the_exact_listing(monkeypatch):
     assert engine.asset_name("ZZZZ") == "ZZZZ"  # no match: the ticker stands in for the name
 
 
-def test_value_on_averages_the_earlier_pies():
-    days = pd.bdate_range("2020-01-01", periods=5)
-    a = {"total": pd.Series([100, 110, 120, 130, 140.0], days), "invested": pd.Series([100.0] * 5, days)}
-    b = {"total": pd.Series([100, 90, 80, 70, 60.0], days), "invested": pd.Series([100.0] * 5, days)}
-    value, invested = engine.value_on([a, b], days[2])
-    assert (value, invested) == (100.0, 100.0)  # (120 + 80) / 2
-    assert engine.value_on([a], pd.Timestamp("2020-01-04"))[0] == 120  # a weekend uses the last trading day
-
-
 @pytest.mark.parametrize("x, text", [
     (950, "€950"), (0.5, "€0.50"), (99.999, "€100"), (12_345, "€12.3k"), (999_000, "€999k"), (5_000_000, "€5M"), (1_254_000, "€1.25M"),
     (2_500_000_000, "€2.5B"), (-6_300, "−€6.3k"),

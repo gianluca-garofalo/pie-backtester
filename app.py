@@ -73,7 +73,12 @@ CURRENCIES = storage.CURRENCIES
 # sidebar settings, keyed so a loaded pie can set them
 for _key, _default in {"base_ccy": "EUR", "start": date(2020, 1, 1), "end": date.today(),
                        "initial": 1000.0, "monthly": 0.0, "rebalance": "Never",
-                       "before_listing": "wait"}.items():
+                       # how pies start when an asset lists after From (engine.START_RULES); kept in a plain key
+                       # so the choice survives while its card isn't shown
+                       "start_rule": "common",
+                       # a preset (engine.PERIOD_PRESETS) keeps From/To in step with it, e.g. 5Y moves with today;
+                       # dates picked by hand make it "Custom"
+                       "period": "5Y"}.items():
     st.session_state.setdefault(_key, _default)
 
 
@@ -90,7 +95,7 @@ def pie_changed():
 SETTING_WORDS = {  # how a pie's own settings are named in the note when it joins a comparison
     "base_ccy": str, "rebalance": lambda v: f"rebalance {v.lower()}", "start": lambda v: f"start {v}",
     "end": lambda v: f"end {v}", "initial": lambda v: f"{v:g} initial", "monthly": lambda v: f"{v:g}/month",
-    "before_listing": lambda v: engine.BEFORE_LISTING[v].lower(),
+    "start_rule": lambda v: "hold cash until assets list" if v == "cash" else "start when all assets have prices",
 }
 
 
@@ -140,7 +145,7 @@ def load_pie(cfg):
     if cfg.get("rebalance") in engine.REBALANCE_RULES:
         pending["rebalance"] = cfg["rebalance"]
     if cfg.get("before_listing") in engine.BEFORE_LISTING:
-        pending["before_listing"] = cfg["before_listing"]
+        pending["start_rule"] = "cash" if cfg["before_listing"] == "cash" else "common"
     for key in ("start", "end"):
         try:
             d = date.fromisoformat(str(cfg.get(key)))
@@ -149,11 +154,14 @@ def load_pie(cfg):
                 pending["end"] = date.today()
             continue
         pending[key] = min(d, date.today())
+    if "start" in pending:
+        pending["period"] = "Custom"  # the pie's own dates
     if st.session_state.compare:
         # joining a comparison: keep the settings every compared pie uses, and say what this one had
         # "EUR, not its own USD": what's in use, then what the pie was saved with
         differ = [f"{SETTING_WORDS[k](st.session_state[k])}, not its own {SETTING_WORDS[k](v)}"
-                  for k, v in pending.items() if k in st.session_state and st.session_state[k] != v]
+                  for k, v in pending.items()
+                  if k in SETTING_WORDS and SETTING_WORDS[k](st.session_state[k]) != SETTING_WORDS[k](v)]
         if differ:
             flash("toast", f"'{md(st.session_state.pie_name)}' uses the comparison's settings: {md('; '.join(differ))}.")
     else:
@@ -501,8 +509,43 @@ def pie_payload(name=None):
         "initial": st.session_state.initial,
         "monthly": st.session_state.monthly,
         "rebalance": st.session_state.rebalance,
-        "before_listing": st.session_state.before_listing,
+        "before_listing": "cash" if st.session_state.start_rule == "cash" else "wait",
     }
+
+
+def loaded_tickers():
+    """Every ticker of every loaded pie: the open one and the compared ones."""
+    own = [a["Ticker"] for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]
+    return list(dict.fromkeys(own + [t for e in st.session_state.compare for t in e["weights"]]))
+
+
+def earliest_price():
+    """The first day any loaded asset has a price (the Max period), or None with no pie."""
+    tickers = [t for t in loaded_tickers() if not is_bare(t)]
+    try:
+        prices, _ = prices_for(tickers, EARLIEST, date.today(), st.session_state.base_ccy) if tickers else (None, None)
+    except Exception:  # a ticker without prices: the results say so
+        return None
+    firsts = prices.apply(lambda col: col.first_valid_index()).dropna() if prices is not None else []
+    return min(firsts).date() if len(firsts) else None
+
+
+def pick_period():
+    st.session_state.period = st.session_state.period_pick
+
+
+def custom_period():
+    st.session_state.period = "Custom"
+
+
+# a preset keeps the dates in step with it (5Y moves with today, Max with the loaded pies); set before the
+# date fields are drawn
+if st.session_state.period != "Custom":
+    _from = engine.period_start(st.session_state.period, date.today(),
+                                earliest_price() if st.session_state.period == "Max" else None)
+    if _from:
+        st.session_state.start = _from
+    st.session_state.end = date.today()
 
 
 # Determine active storage backend
@@ -608,17 +651,6 @@ with account_box:
 with settings_box:
     side_label("Backtest settings")
     base_ccy = st.selectbox("Currency", CURRENCIES, key="base_ccy")
-    # Streamlit's default lower bound is only ten years back
-    # No max_value: a future date would turn the field red and silently keep the old value (and the old
-    # results). Any date is taken, and the checks below say what's wrong. An end after today means "up to date".
-    start = st.date_input("From", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="start",
-                          format="YYYY-MM-DD")
-    end = st.date_input("To", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="end",
-                        format="YYYY-MM-DD")
-    if start > date.today():
-        st.warning("The start date is in the future. Pick a date up to today.")
-    elif start >= end:
-        st.warning("The start date must be before the end date.")
     # the currency shows as an icon in the field when Material has one, otherwise in the label
     ccy_icon = CURRENCY_ICONS.get(base_ccy)
     ccy_label = "" if ccy_icon else f" ({base_ccy})"
@@ -631,8 +663,6 @@ with settings_box:
         st.warning("Set an initial investment or a monthly deposit.")
     rebalance = st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
                                      format_func=REBALANCE_LABELS.get, width="stretch", key="rebalance")
-    before_listing = st.radio("Assets that list later", list(engine.BEFORE_LISTING),
-                              format_func=engine.BEFORE_LISTING.get, key="before_listing")
 
 examples = storage.list_examples()
 
@@ -723,6 +753,25 @@ for _kind, _msg in st.session_state.pop("flashes", []):
     getattr(st, _kind)(_msg)
 
 OWN = f"{st.session_state.pie_name or 'My Pie'} (editing)"  # the pie in the table
+
+# ---------------- period: the only place time is set ----------------
+with st.container(border=True, key="period"):
+    with st.container(horizontal=True, vertical_alignment="bottom"):
+        st.session_state.period_pick = st.session_state.period
+        st.segmented_control("Period", engine.PERIOD_PRESETS + ("Custom",), key="period_pick", required=True,
+                             on_change=pick_period)
+        # Streamlit's default lower bound is only ten years back
+        # No max_value: a future date would turn the field red and silently keep the old value (and the old
+        # results). Any date is taken, and the checks below say what's wrong. An end after today means "up to date".
+        start = st.date_input("From", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="start",
+                              format="YYYY-MM-DD", on_change=custom_period, width=160)
+        end = st.date_input("To", min_value=date(1970, 1, 1), max_value=date(2100, 1, 1), key="end",
+                            format="YYYY-MM-DD", on_change=custom_period, width=160)
+    if start > date.today():
+        st.warning("The start date is in the future. Pick a date up to today.")
+    elif start >= end:
+        st.warning("The start date must be before the end date.")
+    period_detail = st.container()  # the coverage strip, the late-listing choice and the window sentence
 
 strip = st.container()  # the pie chips; filled after the table so they see this run's edits
 
@@ -943,34 +992,137 @@ names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}
 entries = ([(OWN, tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if own_ready else []) + \
     [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
 
-results, late, currencies, joined = {}, {}, {}, {}
+results, late, currencies, first_full = {}, {}, {}, {}
+rule = st.session_state.start_rule
 if settings_ok and entries:
     with st.spinner("Loading prices and simulating…"):
+        # each pie's first day with every price in the period, and its assets that list after From
+        first_full, no_window = {}, {}
         for name, assets in entries:
             try:
-                results[name], late[name], cur = cached_backtest(assets, start, end, base_ccy, initial, monthly,
-                                                                 rebalance, before_listing)
-                currencies.update(cur)
+                prices, info = prices_for([t for t, _ in assets], start, date.today(), base_ccy)
             except Exception as e:
                 if name == OWN:
                     st.error(f"Backtest failed: {e}")
                 else:
                     st.warning(f"'{md(name)}' is left out: {md(e)}")
-        # A pie that starts later begins with the average value of the pies that started earlier, as if
-        # the money had moved into it then, so the lines and "You put in" stay comparable. Its Return,
-        # Per year and Worst fall still cover only its own period.
-        first_day = {n: r["total"].index[0] for n, r in results.items()}
-        assets_of = dict(entries)
-        for name in sorted(results, key=first_day.get):
-            earlier = [results[o] for o in results if first_day[o] + pd.Timedelta(days=7) < first_day[name]]
-            if earlier:
-                value, put_in = engine.value_on(earlier, first_day[name])
-                value = round(value, 2)  # also keeps the cache key tidy
-                res_j, _, _ = cached_backtest(assets_of[name], start, end, base_ccy, value, monthly,
-                                              rebalance, before_listing)
-                results[name] = dict(res_j, invested=res_j["invested"] + (put_in - value))
-                joined[name] = (first_day[name].date(), value)
+                continue
+            currencies.update(info["currencies"])
+            firsts = prices.apply(lambda col: col.first_valid_index())
+            late[name] = {t: d.date() for t, d in firsts.items() if d.date() > start + pd.Timedelta(days=7)}
+            day = engine.first_full_day(prices.loc[:pd.Timestamp(end)], start)
+            if day is None and rule != "cash":
+                ticker, listed = max(firsts.items(), key=lambda x: x[1])
+                no_window[name] = f"No prices in this period: {ticker} starts {listed.day} {listed:%b %Y}"
+            else:
+                first_full[name] = day
+        days = (dict.fromkeys(first_full, pd.Timestamp(start)) if rule == "cash"
+                else engine.start_days(first_full, "common" if rule == "common" and len(first_full) > 1 else "own"))
+        for name, assets in entries:
+            if name in no_window:
+                (st.warning if name == OWN else st.caption)(f"'{md(name)}': {md(no_window[name])}.")
+            if name not in days:
+                continue
+            try:
+                results[name], _, _ = cached_backtest(assets, days[name].date(), end, base_ccy, initial, monthly,
+                                                      rebalance, "cash" if rule == "cash" else "wait")
+            except Exception as e:
+                if name == OWN:
+                    st.error(f"Backtest failed: {e}")
+                else:
+                    st.warning(f"'{md(name)}' is left out: {md(e)}")
 
+late = {n: t for n, t in late.items() if t}  # pies with an asset that lists after From
+pie_colors = {OWN: readable(st.session_state.own_color)} | {e["name"]: readable(e.get("color") or "#8a8d96")
+                                                           for e in st.session_state.compare}
+
+
+def plain_name(n):
+    return st.session_state.pie_name if n == OWN else n
+
+
+def nice(d):
+    return f"{d.day} {d:%b %Y}"
+
+
+def months(a, b):
+    return round((pd.Timestamp(b) - pd.Timestamp(a)).days / 30.44)
+
+
+def coverage_figure(names):
+    """One bar per pie: the period asked for (light), where an asset has no prices yet (dotted) and the days
+    the results use (in the pie's colour)."""
+    fig = go.Figure()
+    t0, t1 = pd.Timestamp(start), pd.Timestamp(end)
+    for n in names:
+        label = html.escape(plain_name(n))
+        fig.add_trace(go.Scatter(x=[t0, t1], y=[label] * 2, mode="lines",
+                                 line=dict(color="rgba(138,141,150,.25)", width=10)))
+        if n in late:
+            ticker, listed = max(late[n].items(), key=lambda x: x[1])
+            listed = pd.Timestamp(min(listed, end))
+            fig.add_trace(go.Scatter(x=[t0, listed], y=[label] * 2, mode="lines",
+                                     line=dict(color="#8a8d96", width=2, dash="dot")))
+            fig.add_annotation(x=t0 + (listed - t0) / 2, y=label, yshift=11, showarrow=False,
+                               text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
+        if n in results:
+            fig.add_trace(go.Scatter(x=[results[n]["total"].index[0], t1], y=[label] * 2, mode="lines",
+                                     line=dict(color=pie_colors[n], width=10)))
+    fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
+                      yaxis=dict(autorange="reversed"), xaxis=dict(range=[t0, t1]))
+    return fig
+
+
+def pick_start_rule():
+    st.session_state.start_rule = st.session_state.start_rule_pick
+
+
+with period_detail:
+    shown_pies = [n for n, _ in entries if n in late or n in results]
+    if late and shown_pies:
+        screen_reader_text("Which days each pie has prices for: " + "; ".join(
+            f"{plain_name(n)} from {nice(results[n]['total'].index[0])}" for n in shown_pies if n in results) + ".")
+        st.plotly_chart(coverage_figure(shown_pies), config={"staticPlot": True})
+    if results:
+        last_day = max(r["total"].index[-1] for r in results.values())
+        first_day = min(r["total"].index[0] for r in results.values())
+        if rule == "own" and len(results) > 1 and late:
+            sentence = (f"Each pie starts on its own first price, so their periods differ; prices to "
+                        f"{nice(last_day)}.")
+        else:
+            sentence = f"Every number and chart below covers {engine.window_label(first_day, last_day)}."
+        if late:
+            ticker, listed = max(((t, d) for n in late for t, d in late[n].items()), key=lambda x: x[1])
+            holders = [plain_name(n) for n in late if ticker in late[n]]
+            sentence += (f" {ticker}'s slice is held as cash until {nice(listed)}." if rule == "cash" else
+                         f" {' and '.join(holders)} can't start earlier: {ticker} has prices from {nice(listed)}.")
+        st.markdown(md(sentence))
+    if late:
+        ticker, listed = max(((t, d) for n in late for t, d in late[n].items()), key=lambda x: x[1])
+        several = len(entries) > 1
+        options = ["common", "own", "cash"] if several else ["common", "cash"]
+        common = max(first_full.values()) if first_full else None
+        lost = max(((n, months(max(d, pd.Timestamp(start)), common)) for n, d in first_full.items()),
+                   key=lambda x: x[1], default=(None, 0))
+        labels = {
+            "common": (f"Start all pies on {nice(common)}" if several else f"Start on {nice(common)}")
+                      if common is not None else "Start when every asset has prices",
+            "own": "Each pie from its own first price",
+            "cash": f"Start on {nice(start)}, holding cash until {ticker} lists",
+        }
+        captions = {
+            "common": ":green-badge[recommended] " + (
+                "Same days, same deposits, so the pies can be ranked."
+                + (f" {md(plain_name(lost[0]))} loses its first {lost[1]} months." if lost[1] >= 1 else "")
+                if several else "The pie as you built it, over a shorter period."),
+            "own": "Every pie shows its own dates, so they aren't ranked against each other.",
+            "cash": f":orange-badge[changes the strategy] Its slice waits as cash, earning nothing, for "
+                    f"{months(start, listed)} months.",
+        }
+        # the choice is kept in start_rule, so it survives while this card isn't shown
+        st.session_state.start_rule_pick = rule if rule in options else "common"
+        st.radio("When the pies start", options, key="start_rule_pick", format_func=labels.get,
+                 captions=[captions[o] for o in options], label_visibility="collapsed", on_change=pick_start_rule)
 own = results.get(OWN)
 
 # one line that says what every number below assumes
@@ -983,25 +1135,10 @@ summary_slot.caption(summary.replace("$", "\\$"))  # a bare $ would start Markdo
 if results:
     st.divider()
     # each pie keeps the colour of its chip in every chart and table
-    colors = {OWN: readable(st.session_state.own_color)} | {e["name"]: readable(e.get("color") or "#8a8d96")
-                                                            for e in st.session_state.compare}
+    colors = pie_colors
     if own:
         res, ccy = own, base_ccy
         m = engine.metrics(res)
-        actual_start = res["total"].index[0].date()
-        if late[OWN]:
-            listed = ", ".join(f"{t} ({d})" for t, d in sorted(late[OWN].items(), key=lambda x: x[1], reverse=True))
-            if before_listing == "wait":
-                with st.container(horizontal=True, vertical_alignment="center"):
-                    st.warning(f"This pie starts on {actual_start}, not {start}, because these assets have no "
-                               f"earlier prices: {listed}.")
-                    if st.button("Hold cash until they list",
-                                 help="Keep the full period: the slice of a later asset stays cash until it lists."):
-                        st.session_state.pending_settings = {"before_listing": "cash"}
-                        st.rerun()
-            else:
-                st.info(f"These assets were held as cash until their first price: {listed}.")
-
         dd_own = res["twr"] / res["twr"].cummax() - 1
         deposits = int((res["invested"].diff() > 0).sum())
         gain = m["profit"]
@@ -1093,16 +1230,6 @@ if results:
             f"{n.removesuffix(' (editing)')} ends at {money(v, base_ccy, True)}" for n, v, _ in ends
             if n != "You put in") + f"; you put in {money(invested.iloc[-1], base_ccy, True)}.")
         st.plotly_chart(fig)
-        for n, r in results.items():
-            d = r["total"].index[0].date()
-            if n in joined:
-                why = (f" ({', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} no earlier prices)"
-                       if late[n] else "")
-                st.caption(f"'{md(n)}' starts on {d}{why} with {md(money(joined[n][1], base_ccy))}: the average "
-                           "value of the pies that started earlier, as if the money had moved into it then.")
-            elif n != OWN and d > start + pd.Timedelta(days=7):
-                st.caption(f"'{md(n)}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
-                           "no earlier prices." if late[n] else f"'{md(n)}' starts on {d}.")
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
                    "predict future returns.")
@@ -1171,10 +1298,7 @@ if st.session_state.compare and len(results) > 1:
                    ["Pie", "From", "Final value", "Return %", "CAGR %", "Max drawdown %", "Volatility %"])
                   + ([] if same_invested else ["Invested"])].copy()
     best = {"Final value": "max", "Return %": "max", "CAGR %": "max", "Max drawdown %": "max", "Volatility %": "min"}
-    # a pie that joined later covers a shorter period, so its return figures don't compete for "best"
-    later_rows = shown["Pie"].isin(joined)
     row_colors = [colors.get(n, "#8a8d96") for n in shown["Pie"]]
-    shown["Pie"] = [f"{n} †" if n in joined else n for n in shown["Pie"]]
 
     def emphasis(df):
         """Each pie's name in its colour; the best value in each column in bold."""
@@ -1182,8 +1306,8 @@ if st.session_state.compare and len(results) > 1:
         for col, how in best.items():
             if col not in df:  # fewer columns on a phone
                 continue
-            ranked = df[col] if col == "Final value" or later_rows.all() else df[col][~later_rows]
-            if ranked.notna().sum() > 1:  # "best" needs at least two pies to compare
+            ranked = df[col]
+            if rule != "own" and ranked.notna().sum() > 1:  # pies over different periods aren't ranked  # "best" needs at least two pies to compare
                 css.loc[getattr(ranked, f"idx{how}")(), col] = "font-weight: 700"
         css["Pie"] = [f"color: {c}; font-weight: 600" for c in row_colors]
         return css
@@ -1202,9 +1326,6 @@ if st.session_state.compare and len(results) > 1:
             "Max drawdown %": st.column_config.Column("Worst fall", help="Largest drop from a previous high"),
             "Volatility %": st.column_config.Column("Volatility", help="How much it swings, per year"),
         })
-    st.caption(md("Bold: best in the column."
+    st.caption(md(("" if rule == "own" else "Bold: best in the column.")
                   + (f" Every pie had {money(table['Invested'].iloc[0], base_ccy)} put in." if same_invested else "")
-                  + " All pies use the sidebar settings; a pie whose assets list later starts later (see From).")
-               + (" " + md("† Started later, with the average value of the pies that started earlier: its Value "
-                           "includes their gains until then, and its Return, Per year, Worst fall and Volatility "
-                           "cover a shorter period, so they aren't marked best.") if later_rows.any() else ""))
+                  + " All pies use the same settings and the period above."))

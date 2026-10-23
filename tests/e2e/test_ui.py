@@ -196,12 +196,13 @@ def test_dates_before_2010_are_allowed(app):
     expect(field).not_to_have_attribute("aria-invalid", "true")
     app.load_example("Tech Leaders")  # loading an example sets its own start date
     app.set_date("From", "2005-03-01")
-    # QDVE.DE lists in 2015, so the pie would start then; one click keeps the full period
-    expect(app.page.get_by_text("This pie starts on 2015-12-03")).to_be_visible()
-    app.click("Hold cash until they list")
+    # QDVE.DE lists in 2015, so the pie would start then; or it holds that slice as cash from 2005
+    expect(app.page.get_by_role("radio", name="Start on 3 Dec 2015")).to_be_checked()
+    app.page.get_by_role("radiogroup", name="When the pies start").get_by_text(
+        "Start on 1 Mar 2005, holding cash until QDVE.DE lists").click()
+    app.wait()
     assert app.metrics(), app.alerts()
-    expect(app.page.get_by_text("held as cash until their first price")).to_be_visible()
-    expect(app.page.get_by_text("2005-03 to")).to_be_visible()
+    expect(app.page.get_by_text("Every number and chart below covers 1 Mar 2005 – ")).to_be_visible()
 
 
 def test_results_wait_for_valid_settings(app):
@@ -223,10 +224,36 @@ def test_results_wait_for_valid_settings(app):
     assert app.metrics()
 
 
+def period(app):
+    return app.page.locator(".st-key-period_pick")
+
+
+def date_of(app, label):
+    parts = [app.page.get_by_role("spinbutton", name=f"{p}, {label}").get_attribute("aria-valuenow")
+             for p in ("year", "month", "day")]
+    return date(*map(int, parts))
+
+
+def test_period_presets_set_the_dates(app):
+    before = date_of(app, "From")
+    period(app).get_by_role("radio", name="Max", exact=True).click()  # no pie yet: nothing to go back to
+    app.wait()
+    assert date_of(app, "From") == before
+    period(app).get_by_role("radio", name="1Y", exact=True).click()
+    app.wait()
+    today = date.today()
+    assert date_of(app, "From") == (today.replace(year=today.year - 1) if (today.month, today.day) != (2, 29)
+                                    else date(today.year - 1, 2, 28))
+    assert date_of(app, "To") == today
+    app.set_date("From", "2019-05-06")  # a date typed by hand makes the period Custom
+    expect(period(app).get_by_role("radio", name="Custom", exact=True)).to_be_checked()
+    assert date_of(app, "From") == date(2019, 5, 6)
+
+
 def test_growth_chart_controls(app):
     app.load_example("All-World ETF")
     for option in ("Log", "1Y"):  # segmented controls are radio buttons
-        app.page.get_by_role("radio", name=option, exact=True).click()
+        app.page.get_by_test_id("stTabs").get_by_role("radio", name=option, exact=True).click()
         app.wait()
     assert app.metrics()
     expect(app.page.get_by_test_id("stPlotlyChart").first).to_be_visible()
