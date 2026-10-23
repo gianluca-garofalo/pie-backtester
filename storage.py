@@ -11,6 +11,12 @@ from typing import Any, Protocol
 LOCAL_STORAGE_FILE = "saved_pies.json"
 
 
+def adds_up(total: float) -> bool:
+    """Whether weights add up to 100%, give or take 0.01 (so 33.33 three times counts).
+    Rounded first: in floating point, 33.33 * 3 is 99.99000000000001."""
+    return round(abs(total - 100.0), 6) <= 0.01
+
+
 def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
     """Validate a pie schema.
 
@@ -65,7 +71,7 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
             return False, f"Asset '{ticker}' weight cannot be negative"
         total_weight += w
 
-    if abs(total_weight - 100.0) > 0.01:
+    if not adds_up(total_weight):
         return False, f"Weights must sum to 100% (got {total_weight:.2f}%)"
 
     for key in ("initial", "monthly"):  # optional, but a number when given

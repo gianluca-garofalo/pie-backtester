@@ -77,7 +77,7 @@ def load_pie(cfg):
     st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
-    if previous and abs(sum(previous.values()) - 100) <= 0.01 and previous != loaded:
+    if previous and storage.adds_up(sum(previous.values())) and previous != loaded:
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                                       for a in st.session_state.pie if a["Ticker"] in previous]},
@@ -607,7 +607,7 @@ with st.container(border=True):
             bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
 
             # the live total says why results are missing, before anyone looks for them
-            if abs(total_w - 100) <= 0.01:
+            if storage.adds_up(total_w):
                 st.markdown(":green[**Total 100% ✓**]")
             elif total_w < 100:
                 st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]")
@@ -623,10 +623,10 @@ with st.container(border=True):
                     split_evenly()
                     pie_changed()
                     st.rerun()
-                if st.button("Scale to 100%", disabled=abs(total_w - 100) <= 0.01 or total_w == 0):
+                if st.button("Scale to 100%", disabled=storage.adds_up(total_w) or total_w == 0):
                     scale_to_100()
                     st.rerun()
-                if st.button("Compare a copy", disabled=abs(total_w - 100) > 0.01,
+                if st.button("Compare a copy", disabled=not storage.adds_up(total_w),
                              help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
                     add_to_comparison({"name": st.session_state.pie_name, "assets": [
                         {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
@@ -696,7 +696,7 @@ export_slot.download_button("Download pie (.json)", pie_json, icon=":material/do
                             mime="application/json", disabled=not st.session_state.pie)
 
 # ---------------- the pie strip: one chip per loaded pie, in its colour ----------------
-own_complete = bool(st.session_state.pie) and abs(total_w - 100) <= 0.01
+own_complete = bool(st.session_state.pie) and storage.adds_up(total_w)
 chips = ([("own", OWN, st.session_state.own_color)] if st.session_state.pie else []) + \
     [(str(i), e["name"], e.get("color") or "#8a8d96") for i, e in enumerate(st.session_state.compare)]
 with strip:
@@ -736,7 +736,7 @@ with strip:
 # Results update by themselves: no run button. Your pie is shown once it's valid, next to any compared pies.
 pie = [a for a in st.session_state.pie if float(a["Weight %"] or 0) > 0]
 tickers = [a["Ticker"] for a in pie]
-own_ready = bool(pie and abs(sum(float(a["Weight %"]) for a in pie) - 100) <= 0.01
+own_ready = bool(pie and storage.adds_up(sum(float(a["Weight %"]) for a in pie))
                  and len(set(tickers)) == len(tickers) and not any(is_bare(t) for t in tickers))
 settings_ok = start < end and (initial > 0 or monthly > 0)
 names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}

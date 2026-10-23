@@ -70,3 +70,8 @@ def test_short_link_is_short_and_readable():
                                  "N~EUR~2020-01-01~~lots~100~N~w~VWCE.DE:100", "N~EUR~2020-01-01~~1000~0~N~w~VWCE.DE"])
 def test_broken_short_links_are_rejected(bad):
     assert decode_share_link(bad) is None
+
+
+def test_a_link_with_thirds_opens():
+    pie = decode_share_link(opened("Thirds~EUR~2020-01-01~~1000~0~N~w~AAPL:33.33,MSFT:33.33,GOOGL:33.33"))
+    assert pie and [a["weight"] for a in pie["assets"]] == [33.33, 33.33, 33.33]

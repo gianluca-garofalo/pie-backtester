@@ -128,3 +128,9 @@ def test_amounts_must_be_numbers(bad):
     ok, err = validate_pie(dict(pie, initial=None, monthly=bad))
     assert not ok and "'monthly' must be a number" in err
     assert validate_pie(dict(pie, initial="1000"))[0]  # numbers as text are fine, like weights
+
+
+def test_thirds_add_up():
+    # 33.33 * 3 is 99.99000000000001 in floating point, just past a plain 0.01 tolerance
+    assert validate_pie({"assets": [{"ticker": t, "weight": 33.33} for t in ("A", "B", "C")]})[0]
+    assert not validate_pie({"assets": [{"ticker": t, "weight": 33.3} for t in ("A", "B", "C")]})[0]  # 99.9
