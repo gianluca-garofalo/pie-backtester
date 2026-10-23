@@ -111,3 +111,10 @@ def test_local_rename_and_publish(tmp_path):
     assert (pie["name"], pie["is_public"]) == ("New name", True)
     assert not store.update_pie(saved["id"], name="  ")  # an empty name is refused
     assert not store.update_pie("no-such-id", name="X")
+
+
+def test_local_overwrite_keeps_the_id(tmp_path):
+    store = LocalStorageBackend(filepath=str(tmp_path / "pies.json"))
+    saved = store.save_pie({"name": "Mine", "assets": [{"ticker": "VWCE.DE", "weight": 100.0}]})
+    store.overwrite_pie(saved["id"], {"name": "Mine", "assets": [{"ticker": "EUNA.DE", "weight": 100.0}]})
+    assert [p["assets"][0]["ticker"] for p in store.list_pies()] == ["EUNA.DE"]  # replaced, not added

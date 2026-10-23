@@ -4,6 +4,7 @@ They use live Yahoo Finance data, so they are skipped by a plain `pytest` run.
 Run them with:  python -m pytest -m e2e
 """
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -134,7 +135,9 @@ class App:
         self.page.get_by_role("button", name="Save", exact=True).click()
         dialog = self.page.get_by_role("dialog")
         dialog.get_by_label("Pie name").fill(name)
-        dialog.get_by_role("button", name="Save pie").click()
+        dialog.get_by_label("Pie name").press("Enter")  # the button says "Update pie" if the name is taken
+        self.wait()
+        dialog.get_by_role("button", name=re.compile("^(Save|Update) pie$")).click()
         self.wait()
 
     def open_sidebar_section(self, title):

@@ -267,3 +267,20 @@ def test_a_broken_file_says_why(app, tmp_path):
     app.wait()
     expect(app.sidebar.get_by_text("Could not load this file: Pie must contain at least one asset")).to_be_visible()
     expect(app.page.get_by_text("Your pie is empty")).to_be_visible()
+
+
+def test_saving_under_the_same_name_updates_the_pie(app):
+    app.load_example("60/40 Stocks & Bonds")
+    app.save_pie("E2E update test")
+    app.edit_weight(0, 70)
+    app.edit_weight(1, 30)
+    app.save_pie("E2E update test")
+    expect(app.page.get_by_text("Updated pie 'E2E update test'.")).to_be_visible()
+    app.open_sidebar_section("Saved pies")
+    expect(app.sidebar.get_by_text("Saved pies (1)")).to_be_visible()  # updated, not copied
+
+    app.click("Clear pie")
+    app.choose("Saved pies", "E2E update test (2 assets)")
+    app.click("Load", root=app.sidebar, exact=True)
+    assert [float(r[1]) for r in app.rows()] == [70, 30]
+    app.click("Delete", root=app.sidebar, exact=True)

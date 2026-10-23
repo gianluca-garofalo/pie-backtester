@@ -132,6 +132,9 @@ class StorageBackend(Protocol):
                    is_public: bool | None = None) -> bool:
         ...
 
+    def overwrite_pie(self, pie_id: str, pie_data: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        ...
+
 
 class LocalStorageBackend:
     def __init__(self, filepath: str = LOCAL_STORAGE_FILE):
@@ -173,6 +176,15 @@ class LocalStorageBackend:
             self._write_all(pies)
             return True
         return False
+
+    def overwrite_pie(self, pie_id: str, pie_data: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        """Replace a saved pie's assets and settings, keeping its id."""
+        pies = self._read_all()
+        if pie_id not in pies:
+            raise ValueError("That saved pie no longer exists.")
+        pies[pie_id] = normalize_pie(dict(pie_data, id=pie_id))
+        self._write_all(pies)
+        return pies[pie_id]
 
     def update_pie(self, pie_id: str, user_id: str | None = None, name: str | None = None,
                    is_public: bool | None = None) -> bool:
@@ -323,6 +335,26 @@ class SupabaseStorageBackend:
             return False
         # PostgREST answers 200 even when the filter matched nothing (someone else's pie)
         return resp.status_code == 200 and bool(resp.json())
+
+    def overwrite_pie(self, pie_id: str, pie_data: dict[str, Any], user_id: str | None = None) -> dict[str, Any]:
+        """Replace one of the owner's saved pies (assets and settings), keeping its id."""
+        if not user_id:
+            raise ValueError("Sign in to save pies.")
+        normalized = normalize_pie(dict(pie_data, id=pie_id))
+        if len(normalized["assets"]) > MAX_ASSETS_PER_PIE:
+            raise ValueError(f"Pie exceeds maximum allowed assets ({MAX_ASSETS_PER_PIE}).")
+        payload = {"name": normalized["name"], "is_public": normalized["is_public"], "config": normalized}
+        try:
+            resp = requests.patch(self.table, params={"id": f"eq.{pie_id}", "owner_id": f"eq.{user_id}"},
+                                  json=payload, headers=self._headers(), timeout=5)
+        except Exception as e:
+            raise RuntimeError(f"Failed to save pie to Supabase: {e}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"Failed to save pie to Supabase: HTTP {resp.status_code} {resp.text[:200]}")
+        rows = resp.json()
+        if not rows:  # the owner filter matched nothing: deleted meanwhile, or someone else's
+            raise ValueError("That saved pie no longer exists.")
+        return self._from_row(rows[0])
 
     def update_pie(self, pie_id: str, user_id: str | None = None, name: str | None = None,
                    is_public: bool | None = None) -> bool:

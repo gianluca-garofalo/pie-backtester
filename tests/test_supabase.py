@@ -160,3 +160,18 @@ def test_update_needs_a_user_and_a_name(db, calls):
     assert not db.update_pie("p1", name="New")
     assert not db.update_pie("p1", user_id="google:123", name="   ")
     assert calls == []
+
+
+def test_overwrite_replaces_only_the_owners_pie(db, calls):
+    calls.replies.append(Resp(rows=[{"id": "p1", "owner_id": "google:123", "name": "Mine", "config": PIE}]))
+    saved = db.overwrite_pie("p1", PIE, user_id="google:123")
+    assert saved["id"] == "p1"
+    assert calls[0]["method"] == "patch"
+    assert calls[0]["params"] == {"id": "eq.p1", "owner_id": "eq.google:123"}
+    assert calls[0]["json"]["config"]["id"] == "p1"
+
+
+def test_overwrite_of_someone_elses_pie_fails(db, calls):
+    calls.replies.append(Resp(rows=[]))
+    with pytest.raises(ValueError, match="no longer exists"):
+        db.overwrite_pie("p1", PIE, user_id="google:456")

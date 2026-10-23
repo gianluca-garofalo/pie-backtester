@@ -372,12 +372,24 @@ def money(x, ccy, compact=False):
 @st.dialog("Save pie")
 def save_dialog():
     name = st.text_input("Pie name", value=st.session_state.pie_name)
-    is_pub = st.checkbox("Make public", value=False)
-    if st.button("Save pie", type="primary", key="save_confirm"):
+    # saving under the name of one of your saved pies updates it instead of adding a copy
+    mine = [p for p in active_storage.list_pies(user_id=user_id)
+            if not shared_storage or p.get("owner_id") == user_id]
+    same = next((p for p in mine if p["name"].strip().lower() == name.strip().lower()), None)
+    is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")))
+    if same:
+        st.caption(f"You already have a saved pie called '{same['name']}'. Saving updates it. "
+                   "To keep both, change the name.")
+    if st.button("Update pie" if same else "Save pie", type="primary", key="save_confirm",
+                 disabled=not name.strip()):
         try:
-            saved = active_storage.save_pie(dict(pie_payload(name), is_public=is_pub), user_id=user_id)
+            payload = dict(pie_payload(name.strip()), is_public=is_pub)
+            if same:
+                saved = active_storage.overwrite_pie(same["id"], payload, user_id=user_id)
+            else:
+                saved = active_storage.save_pie(payload, user_id=user_id)
             st.session_state.pie_name = saved["name"]
-            flash("success", f"Saved pie '{saved['name']}'.")
+            flash("success", f"{'Updated' if same else 'Saved'} pie '{saved['name']}'.")
             st.rerun()
         except Exception as ex:
             st.error(f"Failed to save pie: {ex}")
