@@ -1179,30 +1179,50 @@ def months(a, b):
     return round((pd.Timestamp(b) - pd.Timestamp(a)).days / 30.44)
 
 
+def faded(color, alpha=.35):
+    """A pie colour, see-through: days the pie has prices for but doesn't use."""
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def coverage_figure(names):
-    """One bar per pie: the period asked for (light), where an asset has no prices yet (dotted) and the days
-    the results use (in the pie's colour)."""
+    """One bar per pie over the period asked for (light grey): where an asset has no prices yet (dotted), days
+    the pie has prices for but doesn't use because it starts with the others (faded colour), and the days the
+    results use (solid colour). Grey alone made years with prices look empty. Returns (figure, key) with the
+    key sentence for the kinds of segment that appear."""
     fig = go.Figure()
     t0, t1 = pd.Timestamp(start), pd.Timestamp(end)
-    labels = []
+    labels, shown = [], set()
     for row, n in enumerate(names):  # one numbered row per pie: two cut names can be the same
         name = plain_name(n)
         labels.append(html.escape(name if len(name) <= 24 else name[:23] + "…"))  # a long name squeezed the bars
-        fig.add_trace(go.Scatter(x=[t0, t1], y=[row] * 2, mode="lines",
+        fig.add_trace(go.Scatter(x=[t0, t1], y=[row] * 2, mode="lines", name="period",
                                  line=dict(color="rgba(138,141,150,.25)", width=10)))
         if n in late:
             ticker, listed = max(late[n].items(), key=lambda x: x[1])
             listed = pd.Timestamp(min(listed, end))
-            fig.add_trace(go.Scatter(x=[t0, listed], y=[row] * 2, mode="lines",
+            fig.add_trace(go.Scatter(x=[t0, listed], y=[row] * 2, mode="lines", name="no prices yet",
                                      line=dict(color="#8a8d96", width=2, dash="dot")))
             fig.add_annotation(x=t0 + (listed - t0) / 2, y=row, yshift=11, showarrow=False,
                                text=f"no {html.escape(ticker)} prices yet", font=dict(size=10, color="#5f636e"))
+            shown.add("dotted")
         if n in results:
-            fig.add_trace(go.Scatter(x=[results[n]["total"].index[0], t1], y=[row] * 2, mode="lines",
+            used = results[n]["total"].index[0]
+            own = first_full.get(n)
+            if own is not None and own + pd.Timedelta(days=3) < used:
+                fig.add_trace(go.Scatter(x=[own, used], y=[row] * 2, mode="lines", name="has prices, not used",
+                                         line=dict(color=faded(pie_colors[n]), width=10)))
+                shown.add("faded")
+            fig.add_trace(go.Scatter(x=[used, t1], y=[row] * 2, mode="lines", name="used",
                                      line=dict(color=pie_colors[n], width=10)))
+            shown.add("solid")
     fig.update_layout(height=44 + 30 * len(names), showlegend=False, margin=dict(l=0, r=10, t=6, b=22),
                       yaxis=dict(autorange="reversed", tickvals=list(range(len(names))), ticktext=labels), xaxis=dict(range=[t0, t1]))
-    return fig
+    key = " ".join(text for part, text in (
+        ("solid", "Solid: the days the results use."),
+        ("faded", "Faded: the pie has prices but starts with the others."),
+        ("dotted", "Dotted: an asset has no prices yet.")) if part in shown and len(shown) > 1)
+    return fig, key
 
 
 def pick_start_rule():
@@ -1215,7 +1235,10 @@ with period_detail:
     if shown_pies:  # always: it shows the days the results use, also when every asset has prices from From
         screen_reader_text("Which days each pie has prices for: " + "; ".join(
             f"{plain_name(n)} from {nice(results[n]['total'].index[0])}" for n in shown_pies if n in results) + ".")
-        st.plotly_chart(coverage_figure(shown_pies), config={"staticPlot": True})
+        strip, key = coverage_figure(shown_pies)
+        st.plotly_chart(strip, config={"staticPlot": True})
+        if key:
+            st.caption(key)
     if results:
         last_day = max(r["total"].index[-1] for r in results.values())
         first_day = min(r["total"].index[0] for r in results.values())
