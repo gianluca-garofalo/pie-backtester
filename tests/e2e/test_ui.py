@@ -252,8 +252,8 @@ def test_growth_chart_controls(app):
     expect(tabs.get_by_role("radio", name="1Y", exact=True)).to_have_count(0)  # time is set only by the Period
     tabs.get_by_role("radio", name="Log", exact=True).click()  # segmented controls are radio buttons
     app.wait()
-    expect(tabs.get_by_text("Zooming changes no numbers: they follow the Period above.")).to_be_visible()
-    app.click("Reset zoom")
+    expect(tabs.get_by_text("Double-click to zoom back out. Zooming changes no numbers")).to_be_visible()
+    expect(app.page.get_by_role("button", name="Reset zoom")).to_have_count(0)  # double-click does it
     assert app.metrics()
     expect(app.page.get_by_test_id("stPlotlyChart").first).to_be_visible()
 

@@ -1595,10 +1595,8 @@ if results:
             scale = st.segmented_control("Scale", ["Linear", "Log"], key="growth_scale", required=True,
                                          label_visibility="collapsed")
             # time is set only by the Period at the top; zooming is for looking closer
-            st.caption("Drag across the chart to look closer. Zooming changes no numbers: they follow the "
-                       "Period above.", width="stretch")
-            if st.button("Reset zoom"):
-                st.session_state.zoom_round = st.session_state.get("zoom_round", 0) + 1  # a fresh chart
+            st.caption("Drag across the chart to look closer. Double-click to zoom back out. Zooming changes no "
+                       "numbers: they follow the Period above.", width="stretch")
 
         # pies that start together have the same money put in: one grey line. Pies that start on their own
         # days each get a dotted line in their colour
@@ -1650,7 +1648,7 @@ if results:
             if n != "You put in") + "; you put in " + (
             ", ".join(f"{money(v.iloc[-1], base_ccy, True)} ({plain_name(n)})" for n, v in put_in.items())
             if put_in else money(invested.iloc[-1], base_ccy, True)) + ".")
-        st.plotly_chart(fig, key=f"growth_{st.session_state.get('zoom_round', 0)}",
+        st.plotly_chart(fig, key="growth",
                         config={"displayModeBar": False} if phone else {})
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "

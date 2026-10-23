@@ -197,7 +197,7 @@ def test_cards_keep_their_place_when_switching(app):
 def test_phone_layout(phone):
     phone.load_example("All-World ETF")
     phone.load_example("Tech Leaders")
-    chart = phone.page.locator("[class*='st-key-growth_']")  # the Growth chart
+    chart = phone.page.locator(".st-key-growth")  # the Growth chart
     expect(chart.locator(".legend")).to_have_count(1)  # a legend instead of labels on the right
     expect(chart.locator(".annotation-text")).to_have_count(0)
     # one card per pie, with its donut and its results together
