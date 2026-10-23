@@ -132,9 +132,8 @@ def test_export_then_import(app, tmp_path):
     path = tmp_path / "pie.json"
     path.write_text(json.dumps(dict(exported, name="Imported", initial=777.0)))
     app.click("Clear pie")
-    app.sidebar.locator("input[type=file]").set_input_files(path)
+    app.sidebar.locator("input[type=file]").set_input_files(path)  # opens without another click
     app.wait()
-    app.click("Load this pie", root=app.sidebar)
     assert app.tickers() == ["VWCE.DE"]
     expect(app.page.get_by_role("spinbutton", name="Initial")).to_have_value("777")
     assert app.chips() == ["Imported (editing)"]
@@ -249,3 +248,13 @@ def test_amounts_keep_their_cents(app):
     expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("10.12")
     app.set_number("Monthly", 200)
     expect(app.page.get_by_role("spinbutton", name="Monthly")).to_have_value("200")  # no ".00" on whole amounts
+
+
+def test_a_broken_file_says_why(app, tmp_path):
+    path = tmp_path / "broken.json"
+    path.write_text('{"assets": []}')
+    app.open_sidebar_section("Import / export JSON")
+    app.sidebar.locator("input[type=file]").set_input_files(path)
+    app.wait()
+    expect(app.sidebar.get_by_text("Could not load this file: Pie must contain at least one asset")).to_be_visible()
+    expect(app.page.get_by_text("Your pie is empty")).to_be_visible()

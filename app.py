@@ -467,18 +467,20 @@ with pies_box:
         st.download_button("Download pie (.json)", pie_json, icon=":material/download:", file_name="my_pie.json", mime="application/json",
                            disabled=not st.session_state.pie)
         uploaded = st.file_uploader("Load pie", type="json", label_visibility="collapsed")
-        if uploaded is not None and st.button("Load this pie", icon=":material/upload_file:"):
+        if uploaded is not None:
+            # opens as soon as it's picked; file_id keeps it from opening again on every rerun
             try:
                 uploaded.seek(0)
                 raw_content = json.load(uploaded)
                 is_valid, err = storage.validate_pie(raw_content)
-                if not is_valid:
-                    st.error(f"Invalid pie file: {err}")
-                else:
-                    load_pie(storage.normalize_pie(raw_content))
-                    st.rerun()
             except Exception as e:
-                st.error(f"Could not load pie file: {e}")
+                is_valid, err = False, f"it isn't valid JSON ({e})"
+            if not is_valid:
+                st.error(f"Could not load this file: {err}")
+            elif st.session_state.get("loaded_file_id") != uploaded.file_id:
+                st.session_state.loaded_file_id = uploaded.file_id
+                load_pie(storage.normalize_pie(raw_content))
+                st.rerun()
 
 # ---------------- header: title, settings summary, actions ----------------
 head, actions = st.columns([3, 2], vertical_alignment="bottom")
