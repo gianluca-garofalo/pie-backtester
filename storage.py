@@ -68,6 +68,16 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
     if abs(total_weight - 100.0) > 0.01:
         return False, f"Weights must sum to 100% (got {total_weight:.2f}%)"
 
+    for key in ("initial", "monthly"):  # optional, but a number when given
+        if data.get(key) is None:
+            continue
+        try:
+            amount = float(data[key])
+        except (ValueError, TypeError):
+            return False, f"'{key}' must be a number (got {data[key]!r})"
+        if not math.isfinite(amount):
+            return False, f"'{key}' must be a number (got {data[key]!r})"
+
     return True, ""
 
 

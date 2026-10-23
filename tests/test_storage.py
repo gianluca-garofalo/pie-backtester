@@ -118,3 +118,13 @@ def test_local_overwrite_keeps_the_id(tmp_path):
     saved = store.save_pie({"name": "Mine", "assets": [{"ticker": "VWCE.DE", "weight": 100.0}]})
     store.overwrite_pie(saved["id"], {"name": "Mine", "assets": [{"ticker": "EUNA.DE", "weight": 100.0}]})
     assert [p["assets"][0]["ticker"] for p in store.list_pies()] == ["EUNA.DE"]  # replaced, not added
+
+
+@pytest.mark.parametrize("bad", ["lots", [], {}, "nan", float("inf")])
+def test_amounts_must_be_numbers(bad):
+    pie = {"initial": bad, "assets": [{"ticker": "AAPL", "weight": 100}]}
+    ok, err = validate_pie(pie)
+    assert not ok and "'initial' must be a number" in err
+    ok, err = validate_pie(dict(pie, initial=None, monthly=bad))
+    assert not ok and "'monthly' must be a number" in err
+    assert validate_pie(dict(pie, initial="1000"))[0]  # numbers as text are fine, like weights

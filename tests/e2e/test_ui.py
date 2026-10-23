@@ -296,3 +296,13 @@ def test_click_a_column_name_to_sort(app):
     box = app.grid.bounding_box()
     app.page.mouse.click(box["x"] + 70, box["y"] + 17)  # the Ticker header
     app.eventually(app.tickers, ["EIMI.L", "EUNA.DE", "SWRD.L"])
+
+
+def test_a_file_with_text_for_an_amount_says_why(app, tmp_path):
+    path = tmp_path / "lots.json"
+    path.write_text(json.dumps({"name": "x", "initial": "lots", "assets": [{"ticker": "AAPL", "weight": 100}]}))
+    app.open_sidebar_section("Import / export JSON")
+    app.sidebar.locator("input[type=file]").set_input_files(path)
+    app.wait()
+    expect(app.sidebar.get_by_text("Could not load this file: 'initial' must be a number")).to_be_visible()
+    expect(app.page.get_by_test_id("stException")).to_have_count(0)  # no raw traceback
