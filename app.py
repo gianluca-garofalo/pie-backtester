@@ -894,6 +894,13 @@ def editor_body():
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.text_input("Pie name", key="draft_name", max_chars=storage.MAX_NAME_LENGTH)
+        # saving updates your saved pie of that name: say so when it's another pie, not this one's saved version
+        taken = my_saved_pie(st.session_state.draft_name)
+        own_id = None if st.session_state.draft_new else (st.session_state.saved_ref or {}).get("id")
+        replacing = taken if taken and taken["id"] != own_id else None
+        if replacing:
+            st.caption(f"You already have a saved pie called '{md(replacing['name'])}'. Save would replace it; "
+                       "change the name to keep both.")
         # assets come only from search (or a checked pasted list), so every ticker is a real Yahoo listing
         q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed", key="draft_q",
                           placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL").strip()
@@ -1024,7 +1031,7 @@ def editor_body():
             st.rerun()
         can_save = (bool(draft) and storage.adds_up(total) and not bare and not dupes
                     and not (shared_storage and not user_id))
-        if st.button("Save to My pies", icon=":material/save:", disabled=not can_save,
+        if st.button("Replace in My pies" if replacing else "Save to My pies", icon=":material/save:", disabled=not can_save,
                      help="Sign in to save pies." if shared_storage and not user_id else None):
             if apply_draft():
                 try:

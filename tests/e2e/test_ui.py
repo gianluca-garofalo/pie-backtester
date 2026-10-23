@@ -549,3 +549,18 @@ def test_paste_a_list_without_keyboard_shortcuts(app):
     app.wait()
     app.click("Replace rows", root=editor)
     assert [(r[0], float(r[1])) for r in app.rows()] == [("VWCE.DE", 60), ("AAPL", 40)]
+
+
+def test_the_editor_says_before_replacing_another_saved_pie(app):
+    app.load_example("All-World ETF")
+    app.save_pie("E2E taken")
+    app.load_example("Tech Leaders")
+    editor = app.open_editor()
+    name = editor.get_by_role("textbox", name="Pie name")
+    name.fill("E2E taken")
+    name.press("Enter")
+    app.wait()
+    expect(editor.get_by_text("You already have a saved pie called 'E2E taken'")).to_be_visible()
+    expect(editor.get_by_role("button", name="Replace in My pies")).to_be_visible()  # not a silent overwrite
+    app.close_editor()
+    app.delete_saved("E2E taken")
