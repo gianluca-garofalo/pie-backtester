@@ -244,3 +244,14 @@ def test_cash_rule_holds_cash_from_the_asked_start():
     assert before.loc[:"2020-01-31"].eq(1000).all() and before.loc["2020-02-03":].eq(1100).all()  # cash, flat
     assert res["invested"].iloc[-1] == 1000 + 100 * 5  # Feb–Jun deposits
     assert res["units"]["B"] == pytest.approx(1200 / 50 + 300 / 50)  # cash and the March deposit buy in on 2 Mar, then Apr–Jun
+
+
+def test_best_marks_go_to_every_pie_in_a_tie():
+    same = {"final_value": 25.6, "twr_total": 4.15, "cagr": 0.254, "max_drawdown": -0.297}
+    other = {"final_value": 17.0, "twr_total": 1.35, "cagr": 0.126, "max_drawdown": -0.334}
+    marks = engine.best_marks({"a": same, "a (copy)": dict(same), "b": other})
+    assert marks["a"] == marks["a (copy)"] == {"final_value", "twr_total", "cagr", "max_drawdown"}
+    assert marks["b"] == set()
+    # an untouched copy differs from its original by float noise at most
+    noisy = dict(same, final_value=25.6 + 1e-9)
+    assert "final_value" in engine.best_marks({"a": same, "a (copy)": noisy, "b": other})["a"]

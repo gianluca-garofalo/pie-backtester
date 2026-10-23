@@ -226,14 +226,18 @@ BEST = ("final_value", "twr_total", "cagr", "max_drawdown")  # higher is better,
 
 
 def best_marks(by_pie: dict[str, dict]) -> dict[str, set]:
-    """For each pie, the metrics it's best at among the pies; nothing with fewer than two pies."""
+    """For each pie, the metrics it's best at among the pies; nothing with fewer than two pies. Every pie in a
+    tie gets the mark (an untouched copy equals its original)."""
     marks = {name: set() for name in by_pie}
     if len(by_pie) < 2:
         return marks
     for key in BEST:
         values = {n: m[key] for n, m in by_pie.items() if not pd.isna(m[key])}
         if values:
-            marks[max(values, key=values.get)].add(key)
+            top = max(values.values())
+            for n, v in values.items():
+                if np.isclose(v, top, rtol=1e-9, atol=1e-9):
+                    marks[n].add(key)
     return marks
 
 
