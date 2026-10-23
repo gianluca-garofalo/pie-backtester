@@ -6,9 +6,17 @@ import json
 import math
 import os
 import uuid
+from datetime import date
 from typing import Any, Protocol
 
 LOCAL_STORAGE_FILE = "saved_pies.json"
+
+
+# What a pie's settings may be. engine.REBALANCE_RULES and engine.BEFORE_LISTING use the same keys.
+CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"]
+REBALANCE_OPTIONS = ("Never", "Monthly", "Quarterly", "Yearly")
+BEFORE_LISTING_OPTIONS = ("wait", "cash")
+MAX_AMOUNT = 1e12  # far above any real portfolio; stops absurd values from files and links
 
 
 def clean_name(name: Any) -> str:
@@ -84,7 +92,8 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
     if not adds_up(total_weight):
         return False, f"Weights must sum to 100% (got {total_weight:.2f}%)"
 
-    for key in ("initial", "monthly"):  # optional, but a number when given
+    # the settings are optional, but must make sense when given
+    for key in ("initial", "monthly"):
         if data.get(key) is None:
             continue
         try:
@@ -93,6 +102,22 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
             return False, f"'{key}' must be a number (got {data[key]!r})"
         if not math.isfinite(amount):
             return False, f"'{key}' must be a number (got {data[key]!r})"
+        if amount < 0:
+            return False, f"'{key}' can't be negative (got {amount:g})"
+        if amount > MAX_AMOUNT:
+            return False, f"'{key}' is too large (got {amount:g})"
+    if data.get("currency") is not None and str(data["currency"]).upper() not in CURRENCIES:
+        return False, f"Unknown currency {data['currency']!r}: use one of {', '.join(CURRENCIES)}"
+    if data.get("rebalance") is not None and data["rebalance"] not in REBALANCE_OPTIONS:
+        return False, f"Unknown rebalance {data['rebalance']!r}: use one of {', '.join(REBALANCE_OPTIONS)}"
+    if data.get("before_listing") is not None and data["before_listing"] not in BEFORE_LISTING_OPTIONS:
+        return False, f"Unknown before_listing {data['before_listing']!r}: use 'wait' or 'cash'"
+    for key in ("start", "end"):
+        if data.get(key) is not None:
+            try:
+                date.fromisoformat(str(data[key]))
+            except ValueError:
+                return False, f"'{key}' must be a date like 2020-01-01 (got {data[key]!r})"
 
     return True, ""
 

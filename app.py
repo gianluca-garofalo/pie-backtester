@@ -44,7 +44,7 @@ st.session_state.setdefault("own_color", PIE_COLORS[0])
 MAX_COMPARED = 5  # pies in one comparison, including yours
 METHOD = (Path(__file__).parent / "docs" / "how-its-calculated.md").read_text()  # the "How it's calculated" tab
 
-CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN"]
+CURRENCIES = storage.CURRENCIES
 # sidebar settings, keyed so a loaded pie can set them
 for _key, _default in {"base_ccy": "EUR", "start": date(2020, 1, 1), "end": date.today(),
                        "initial": 1000.0, "monthly": 0.0, "rebalance": "Never",
@@ -478,9 +478,9 @@ with settings_box:
     ccy_icon = CURRENCY_ICONS.get(base_ccy)
     ccy_label = "" if ccy_icon else f" ({base_ccy})"
     # whole amounts without ".00", but cents stay visible when there are any (10.12)
-    initial = st.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format=amount_format("initial"),
+    initial = st.number_input(f"Initial{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=100.0, format=amount_format("initial"),
                               icon=ccy_icon, key="initial")
-    monthly = st.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format=amount_format("monthly"),
+    monthly = st.number_input(f"Monthly{ccy_label}", min_value=0.0, max_value=storage.MAX_AMOUNT, step=50.0, format=amount_format("monthly"),
                               icon=ccy_icon, key="monthly")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")

@@ -142,3 +142,20 @@ def test_names_ignore_case_and_spacing():
     assert same_name("[P6]  Tech", "[p6] tech ")
     assert not same_name("Tech", "Tech 2")
     assert normalize_pie({"name": " My   pie ", "assets": [{"ticker": "A", "weight": 100}]})["name"] == "My pie"
+
+
+@pytest.mark.parametrize("field, value, message", [
+    ("monthly", -100, "can't be negative"), ("initial", 1e308, "too large"),
+    ("currency", "XYZ", "Unknown currency"), ("rebalance", "Daily", "Unknown rebalance"),
+    ("before_listing", "maybe", "Unknown before_listing"), ("start", "yesterday", "must be a date"),
+])
+def test_settings_that_make_no_sense_are_refused(field, value, message):
+    ok, err = validate_pie({field: value, "assets": [{"ticker": "AAPL", "weight": 100}]})
+    assert not ok and message in err
+
+
+def test_storage_settings_match_the_engine():
+    import engine
+    from storage import BEFORE_LISTING_OPTIONS, REBALANCE_OPTIONS
+    assert tuple(engine.REBALANCE_RULES) == REBALANCE_OPTIONS
+    assert tuple(engine.BEFORE_LISTING) == BEFORE_LISTING_OPTIONS
