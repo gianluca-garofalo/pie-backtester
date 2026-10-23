@@ -80,6 +80,7 @@ def test_scale_to_100_keeps_the_proportions(app):
     app.edit_weight(0, 30)  # 30 + 40 = 70%
     expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
     app.click("Scale to 100%")
+    expect(app.page.get_by_text("Scaled the weights from 70.00% to 100%.")).to_be_visible()
     assert [float(r[1]) for r in app.rows()] == pytest.approx([42.86, 57.14])
     assert app.metrics()
 

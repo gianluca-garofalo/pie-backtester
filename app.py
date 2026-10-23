@@ -167,7 +167,7 @@ def scale_to_100():
         a["Weight %"] = round(float(a["Weight %"] or 0) * 100 / total, 2)
     biggest = max(st.session_state.pie, key=lambda a: a["Weight %"])
     biggest["Weight %"] = round(biggest["Weight %"] + 100 - sum(a["Weight %"] for a in st.session_state.pie), 2)
-    st.toast(f"Scaled the weights from {total:.2f}% to 100%.")
+    flash("toast", f"Scaled the weights from {total:.2f}% to 100%.")
     pie_changed()
 
 
