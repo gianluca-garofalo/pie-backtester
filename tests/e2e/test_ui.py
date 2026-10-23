@@ -94,7 +94,8 @@ def test_add_assets_by_search(app):
     assert len(app.rows()) == 2  # no empty "add row" line: assets only come from search
     expect(app.page.get_by_label("Search by name, ticker or ISIN")).to_have_value("")  # cleared after adding
     expect(app.page.get_by_role("button", name="Add to pie")).to_have_count(0)
-    assert app.tickers()[-1] == "EIMI.L"
+    # the ISIN's first result is its euro listing (the pie is in EUR), not the London USD line
+    assert app.tickers() == ["VWCE.DE", "EIMI.L"]
     assert [float(r[1]) for r in app.rows()] == [100, 0]  # the second gets what's left: nothing
 
     app.click("Clear pie")

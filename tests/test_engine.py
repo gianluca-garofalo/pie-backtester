@@ -159,3 +159,33 @@ def test_money_compact(x, text):
 def test_money_full_and_other_currencies():
     assert engine.money(5_000_000, "EUR") == "€5,000,000.00"
     assert engine.money(1_500, "SEK", compact=True) == "1.5k SEK"
+
+
+def _hit(symbol, name="Vanguard FTSE All-World", type_="ETF", exchange="X"):
+    return {"symbol": symbol, "name": name, "exchange": exchange, "type": type_}
+
+
+def test_isin_search_adds_the_funds_other_listings_and_drops_junk(monkeypatch):
+    def search(q, n=10):
+        if q == "IE00BK5BQT80":
+            return [_hit("VWRA.L"), _hit("IE00BK5BQT80.SG", type_="MUTUALFUND")]
+        return [_hit("VWCE.DE"), _hit("VWRA.L"), _hit("VHVE.L", name="Vanguard FTSE Developed World")]
+    monkeypatch.setattr(engine, "search_assets", search)
+    monkeypatch.setattr(engine, "get_currency", lambda t: {"VWCE.DE": "EUR"}.get(t, "USD"))
+    hits = engine.search_listings("IE00BK5BQT80")
+    assert [(h["symbol"], h["currency"]) for h in hits] == [("VWRA.L", "USD"), ("VWCE.DE", "EUR")]
+
+
+def test_rank_puts_etfs_in_the_pie_currency_first_and_keeps_stock_order():
+    hits = [dict(_hit("VWRA.L"), currency="USD"), dict(_hit("VWCE.MX"), currency="EUR"),
+            dict(_hit("VWCE.DE"), currency="EUR"), dict(_hit("SWRD.L"), currency="GBp"),
+            dict(_hit("AAPL", type_="EQUITY"), currency="USD"), dict(_hit("APC.DE", type_="EQUITY"), currency="EUR")]
+    assert [h["symbol"] for h in engine.rank_listings(hits, "EUR")] == \
+        ["VWCE.DE", "AAPL", "APC.DE", "VWRA.L", "SWRD.L", "VWCE.MX"]  # a rare exchange goes last
+    assert [h["symbol"] for h in engine.rank_listings(hits, "GBP")][0] == "SWRD.L"  # pence count as pounds
+
+
+def test_etcs_count_as_funds_when_ranking():
+    hits = [dict(_hit("IGLN.L", name="iShares Physical Gold ETC", type_="EQUITY"), currency="USD"),
+            dict(_hit("EGLN.L", name="iShares Physical Gold ETC", type_="EQUITY"), currency="EUR")]
+    assert [h["symbol"] for h in engine.rank_listings(hits, "EUR")] == ["EGLN.L", "IGLN.L"]

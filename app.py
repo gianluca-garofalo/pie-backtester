@@ -259,7 +259,7 @@ def split_evenly():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_search(q):
-    return engine.search_assets(q)
+    return engine.search_listings(q)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -595,7 +595,9 @@ with st.container(border=True):
             if not hits:
                 st.info("No matches. Try the ticker with its exchange suffix, e.g. VWCE.DE, IWDA.AS, CSPX.L.")
             else:
-                labels = [f"{h['symbol']} — {h['name']} ({h['exchange']}, {h['type']})" for h in hits]
+                hits = engine.rank_listings(hits, base_ccy)
+                labels = [f"{h['symbol']} — {h['name']} · {h['exchange']} · {h['currency']}"
+                          + ("" if h["type"] in ("ETF", "EQUITY") else f" · {h['type'].lower()}") for h in hits]
                 choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
                 if st.button("Add to pie", type="primary"):
                     add_asset(hits[choice]["symbol"], hits[choice]["name"])

@@ -4,6 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import logging
+import re
+from concurrent.futures import ThreadPoolExecutor
 
 import yfinance as yf
 
@@ -42,6 +44,38 @@ EXCHANGE_PREFERENCE = {
     "GBP": [".L", ".DE", ".AS", ".PA", ".MI", ".SW"],
     "USD": [".L", ".DE", ".AS", ".SW", ".PA", ".MI"],
 }
+
+
+ISIN = re.compile(r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$")
+# exchanges few European or US investors buy on; their listings go to the end of the results
+RARE_EXCHANGES = (".MX", ".SG", ".XD", ".XC", ".CL", ".BA", ".SA", ".NE", ".VI", ".HM", ".DU", ".MU", ".BE")
+
+
+def search_listings(query: str) -> list[dict]:
+    """Search results with each listing's currency. For an ISIN, the same fund's other listings
+    are added (Yahoo often returns only one of them), and junk entries named after the ISIN go."""
+    hits = search_assets(query, 10)
+    if ISIN.match(query.strip().upper()) and hits:
+        name = hits[0]["name"].casefold()
+        hits += [h for h in search_assets(hits[0]["name"], 15)
+                 if h["name"].casefold() == name and h["symbol"] not in {x["symbol"] for x in hits}]
+    hits = [h for h in hits if h["symbol"] and not ISIN.match(h["symbol"].split(".")[0].upper())]
+    with ThreadPoolExecutor(8) as pool:  # one lookup per listing; in parallel they take about as long as one
+        currencies = list(pool.map(get_currency, [h["symbol"] for h in hits]))
+    return [dict(h, currency=c) for h, c in zip(hits, currencies)]
+
+
+def rank_listings(hits: list[dict], base_ccy: str) -> list[dict]:
+    """Funds (ETFs, ETCs) in the pie's currency first (a euro investor wants VWCE.DE, not VWRA.L); stocks keep
+    Yahoo's order, which puts the home listing first (AAPL above AAPL.TO). Rare exchanges go last."""
+    def key(item):
+        i, h = item
+        cur = {"GBP": "GBP", "GBp": "GBP", "GBX": "GBP"}.get(h.get("currency"), h.get("currency"))
+        # Yahoo files ETCs (gold, commodities) as equities, so the name tells funds apart too
+        fund = h["type"] == "ETF" or re.search(r"\b(ETC|ETN|UCITS)\b", h["name"], re.I)
+        other_currency = bool(fund) and cur != base_ccy
+        return (h["symbol"].upper().endswith(RARE_EXCHANGES), other_currency, i)
+    return [h for _, h in sorted(enumerate(hits), key=key)]
 
 
 def needs_suffix(ticker: str) -> bool:
