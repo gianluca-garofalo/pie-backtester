@@ -11,6 +11,16 @@ from typing import Any, Protocol
 LOCAL_STORAGE_FILE = "saved_pies.json"
 
 
+def clean_name(name: Any) -> str:
+    """A pie name with its spacing tidied: "  My   pie " -> "My pie"."""
+    return " ".join(str(name).split())
+
+
+def same_name(a: str, b: str) -> bool:
+    """Whether two pie names are the same to a person: case and spacing don't count."""
+    return clean_name(a).casefold() == clean_name(b).casefold()
+
+
 def adds_up(total: float) -> bool:
     """Whether weights add up to 100%, give or take 0.01 (so 33.33 three times counts).
     Rounded first: in floating point, 33.33 * 3 is 99.99000000000001."""
@@ -116,7 +126,7 @@ def normalize_pie(data: dict[str, Any]) -> dict[str, Any]:
     normalized = {
         "version": 1,
         "id": str(data.get("id") or uuid.uuid4()),
-        "name": str(data.get("name", "Untitled Pie")).strip() or "Untitled Pie",
+        "name": clean_name(data.get("name", "Untitled Pie")) or "Untitled Pie",
         "currency": str(data.get("currency", "EUR")).upper(),
         "assets": assets_raw,
         "start": data.get("start"),
@@ -209,7 +219,7 @@ class LocalStorageBackend:
         if pie_id not in pies or (name is not None and not name.strip()):
             return False
         if name is not None:
-            pies[pie_id]["name"] = name.strip()
+            pies[pie_id]["name"] = clean_name(name)
         if is_public is not None:
             pies[pie_id]["is_public"] = bool(is_public)
         self._write_all(pies)
@@ -383,7 +393,7 @@ class SupabaseStorageBackend:
         # name and is_public live in their columns and inside config, so both change
         changes = {}
         if name is not None:
-            changes["name"] = name.strip()
+            changes["name"] = clean_name(name)
         if is_public is not None:
             changes["is_public"] = bool(is_public)
         config = {k: v for k, v in rows[0].items() if k != "owner_id"} | changes

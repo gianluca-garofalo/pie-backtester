@@ -410,7 +410,7 @@ def save_dialog():
     # saving under the name of one of your saved pies updates it instead of adding a copy
     mine = [p for p in active_storage.list_pies(user_id=user_id)
             if not shared_storage or p.get("owner_id") == user_id]
-    same = next((p for p in mine if p["name"].strip().lower() == name.strip().lower()), None)
+    same = next((p for p in mine if storage.same_name(p["name"], name)), None)
     is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")))
     if same:
         st.caption(f"You already have a saved pie called '{md(same['name'])}'. Saving updates it. "
@@ -436,11 +436,17 @@ def edit_dialog(pie):
     name = st.text_input("Name", value=pie["name"])
     is_pub = st.toggle("Public", value=bool(pie.get("is_public")),
                        help="Public pies are listed for everyone who opens the app, signed in or not.")
-    if st.button("Save changes", type="primary", key="edit_confirm", disabled=not name.strip()):
+    # two of your pies can't share a name: saving under a name updates that pie
+    taken = next((p for p in active_storage.list_pies(user_id=user_id)
+                  if p["id"] != pie["id"] and (not shared_storage or p.get("owner_id") == user_id)
+                  and storage.same_name(p["name"], name)), None)
+    if taken:
+        st.caption(f"You already have a pie called '{md(taken['name'])}'. Pick another name.")
+    if st.button("Save changes", type="primary", key="edit_confirm", disabled=not name.strip() or bool(taken)):
         if active_storage.update_pie(pie["id"], user_id=user_id, name=name, is_public=is_pub):
             if st.session_state.pie_name == pie["name"]:  # the open pie came from this one
-                st.session_state.pie_name = name.strip()
-            flash("success", f"Updated '{md(name.strip())}'" + (" (public)." if is_pub else "."))
+                st.session_state.pie_name = storage.clean_name(name)
+            flash("success", f"Updated '{md(storage.clean_name(name))}'" + (" (public)." if is_pub else "."))
             st.rerun()
         st.error(f"Could not update pie '{md(pie['name'])}'.")
 

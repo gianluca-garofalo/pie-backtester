@@ -337,3 +337,24 @@ def test_a_crafted_name_shows_as_typed(app):
     chip = app.page.locator(".st-key-chip_name_own")
     expect(chip).to_contain_text(name)
     assert chip.locator("strong, a, .katex").count() == 0
+
+
+def test_rename_cannot_take_another_pies_name(app):
+    app.load_example("All-World ETF")
+    app.save_pie("E2E dup A")
+    app.load_example("Tech Leaders")
+    app.save_pie("E2E dup B")
+    app.open_sidebar_section("Saved pies")
+    app.choose("Saved pies", "E2E dup B (3 assets)")
+    app.click("Edit", root=app.sidebar, exact=True)
+    dialog = app.page.get_by_role("dialog")
+    dialog.get_by_label("Name").fill("e2e  DUP a")  # same name to a person: case and spaces differ
+    dialog.get_by_label("Name").press("Enter")
+    app.wait()
+    expect(dialog.get_by_text("You already have a pie called 'E2E dup A'. Pick another name.")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Save changes")).to_be_disabled()
+    app.page.keyboard.press("Escape")
+    app.click("Delete", root=app.sidebar, exact=True)  # tidy up: B is still picked
+    app.open_sidebar_section("Saved pies")
+    app.choose("Saved pies", "E2E dup A (1 assets)")
+    app.click("Delete", root=app.sidebar, exact=True)

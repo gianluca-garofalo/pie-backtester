@@ -134,3 +134,11 @@ def test_thirds_add_up():
     # 33.33 * 3 is 99.99000000000001 in floating point, just past a plain 0.01 tolerance
     assert validate_pie({"assets": [{"ticker": t, "weight": 33.33} for t in ("A", "B", "C")]})[0]
     assert not validate_pie({"assets": [{"ticker": t, "weight": 33.3} for t in ("A", "B", "C")]})[0]  # 99.9
+
+
+def test_names_ignore_case_and_spacing():
+    from storage import clean_name, same_name
+    assert clean_name("  [P6]   Tech  ") == "[P6] Tech"
+    assert same_name("[P6]  Tech", "[p6] tech ")
+    assert not same_name("Tech", "Tech 2")
+    assert normalize_pie({"name": " My   pie ", "assets": [{"ticker": "A", "weight": 100}]})["name"] == "My pie"
