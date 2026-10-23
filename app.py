@@ -1456,9 +1456,11 @@ if results:
     with tabs["Growth"]:
         years = max((r["total"].index[-1] - r["total"].index[0]).days for r in results.values()) / 365.25
         with st.container(horizontal=True, vertical_alignment="center"):
-            # log by default for long horizons: equal % moves then look equal
-            scale = st.segmented_control("Scale", ["Linear", "Log"], default="Log" if years > 10 else "Linear",
-                                         required=True, label_visibility="collapsed")
+            # log by default for long horizons: equal % moves then look equal. Keyed, with the default set once:
+            # a default that changes with the period reset the person's own pick
+            st.session_state.setdefault("growth_scale", "Log" if years > 10 else "Linear")
+            scale = st.segmented_control("Scale", ["Linear", "Log"], key="growth_scale", required=True,
+                                         label_visibility="collapsed")
             # time is set only by the Period at the top; zooming is for looking closer
             st.caption("Drag across the chart to look closer. Zooming changes no numbers: they follow the "
                        "Period above.", width="stretch")

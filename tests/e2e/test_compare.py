@@ -266,3 +266,15 @@ def test_loading_a_pie_after_a_copy_keeps_the_original(app):
     copy_pie(app, "Tech Leaders")
     app.load_example("All-World ETF")  # Tech Leaders moves to the comparison; it was dropped for its copy
     assert app.cards() == ["Tech Leaders", "Tech Leaders (copy)", "All-World ETF"]
+
+
+def test_the_chart_scale_stays_as_picked(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2015-01-01")
+    tabs = app.page.get_by_test_id("stTabs")
+    tabs.get_by_role("radio", name="Linear", exact=True).click()
+    app.wait()
+    start_choice(app).get_by_text("Each pie from its own first price").click()  # a longer period: >10 years
+    app.wait()
+    expect(tabs.get_by_role("radio", name="Linear", exact=True)).to_be_checked()  # used to flip to Log
