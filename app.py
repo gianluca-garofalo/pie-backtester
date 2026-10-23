@@ -658,7 +658,8 @@ with st.container(border=True):
                 if st.button("Compare a copy", disabled=not storage.adds_up(total_w),
                              help="Adds a copy of this pie to the comparison, so you can change it and compare the two."):
                     add_to_comparison({"name": st.session_state.pie_name, "assets": [
-                        {"ticker": a["Ticker"], "weight": a["Weight %"]} for a in st.session_state.pie]})
+                        {"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
+                        for a in st.session_state.pie]})
                     st.rerun()
                 if st.button("Clear pie"):
                     st.session_state.pie, st.session_state.fix_report = [], None

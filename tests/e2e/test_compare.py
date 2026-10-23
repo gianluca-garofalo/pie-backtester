@@ -39,6 +39,15 @@ def test_snapshot_of_your_own_pie(app):
     expect(app.page.get_by_text("Your pie appears here once")).to_be_visible()
 
 
+def test_a_copy_keeps_the_fund_names(app):
+    app.load_example("Tech Leaders")
+    app.click("Compare a copy")
+    app.click("Split evenly")  # make the two differ, so switching keeps both
+    app.open_pie("Tech Leaders")  # the copy
+    assert [r[2] for r in app.rows()] == ["iShares S&P 500 Information Technology Sector UCITS ETF",
+                                          "Apple Inc.", "Microsoft Corporation"]  # were the tickers
+
+
 def test_clicking_a_compared_pie_opens_it(app):
     app.load_example("All-World ETF")
     app.load_example("Tech Leaders")
