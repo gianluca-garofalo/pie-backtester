@@ -739,3 +739,12 @@ def test_the_undo_note_is_announced(app):
     app.load_example("Tech Leaders")
     app.remove_pie("All-World ETF")
     expect(app.page.locator(".st-key-undo_note [role=status]")).to_contain_text("Removed 'All-World ETF'.")
+
+
+def test_results_show_exact_values_and_name_the_pie_in_the_tabs(app):
+    app.load_example("All-World ETF")
+    big = app.page.locator(".st-key-val_own_value .big-number")
+    assert re.fullmatch(r"€[\d,]+\.\d\d", big.get_attribute("title")), big.get_attribute("title")  # exact on hover
+    for tab in ("By asset", "Holdings"):
+        app.page.get_by_role("tab", name=tab).click()
+        expect(app.page.get_by_role("tabpanel", name=tab)).to_contain_text("All-World ETF · the open pie")

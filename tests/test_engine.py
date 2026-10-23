@@ -255,3 +255,10 @@ def test_best_marks_go_to_every_pie_in_a_tie():
     # an untouched copy differs from its original by float noise at most
     noisy = dict(same, final_value=25.6 + 1e-9)
     assert "final_value" in engine.best_marks({"a": same, "a (copy)": noisy, "b": other})["a"]
+
+
+def test_window_label_under_a_month():
+    assert engine.window_label(pd.Timestamp("2026-10-01"), pd.Timestamp("2026-10-11")) == \
+        "1 Oct 2026 – 11 Oct 2026 · under a month"  # was "0 months"
+    assert engine.window_label(pd.Timestamp("2026-09-01"), pd.Timestamp("2026-10-11")) == \
+        "1 Sep 2026 – 11 Oct 2026 · 1 month"

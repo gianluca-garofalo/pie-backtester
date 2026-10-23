@@ -1370,18 +1370,22 @@ def pie_card(k):
             result_card(k)
 
 
-def big(text):
-    st.html(f'<div class="big-number">{html.escape(text)}</div>')
+def big(text, exact):
+    """A big number, with its exact amount on hover."""
+    st.html(f'<div class="big-number" title="{html.escape(exact)}">{html.escape(text)}</div>')
 
 
 def result_row(k, row, label, sub, value, help_text):
-    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+    with st.container(horizontal=True, vertical_alignment="top", gap="small"):  # values level across cards
         st.markdown(f"{label}  \n:small[{sub}]", help=help_text, width="stretch")
-        with st.container(key=f"val_{k}_{row}", width="content"):
-            st.markdown(f"**{value}**")
-        if row in marks.get(card_name[k], ()):
-            with st.container(key=f"best_{k}_{row}", width="content"):
-                st.badge("best", color="green")
+        # the badge goes under the value, not beside it: beside it a narrow card wrapped the row onto a third
+        # line, and the rows of the cards no longer lined up
+        with st.container(width="content", gap=None, horizontal_alignment="right"):
+            with st.container(key=f"val_{k}_{row}", width="content"):
+                st.markdown(f"**{value}**")
+            if row in marks.get(card_name[k], ()):
+                with st.container(key=f"best_{k}_{row}", width="content"):
+                    st.badge("best", color="green")
 
 
 def result_card(k):
@@ -1407,7 +1411,7 @@ def result_card(k):
                                      "everything you put in; the percentage is the gain on the money you put in.")
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
             with st.container(key=f"val_{k}_value", width="content"):
-                big(money(m["final_value"], ccy, True))
+                big(money(m["final_value"], ccy, True), money(m["final_value"], ccy))
             if "value" in marks.get(name, ()):
                 with st.container(key=f"best_{k}_value", width="content"):
                     st.badge("best", color="green")
@@ -1539,13 +1543,21 @@ if results:
             if st.button("Reset zoom"):
                 st.session_state.zoom_round = st.session_state.get("zoom_round", 0) + 1  # a fresh chart
 
-        # every pie has the same amount put in (later ones join with it), so the earliest one draws it
+        # pies that start together have the same money put in: one grey line. Pies that start on their own
+        # days each get a dotted line in their colour
         first = min(results.values(), key=lambda r: r["total"].index[0])
         lines = {name: r["total"] for name, r in results.items()}
         invested = first["invested"]
+        put_in = ({name: r["invested"] for name, r in results.items()}
+                  if len({r["total"].index[0] for r in results.values()}) > 1 else {})
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26], vertical_spacing=0.05)
-        fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
-                                 line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
+        if not put_in:
+            fig.add_trace(go.Scatter(x=invested.index, y=invested, name="You put in", hovertemplate="%{y:,.0f}",
+                                     line=dict(color="#8a8d96", dash="dot", shape="hv")), row=1, col=1)
+        for name, s_in in put_in.items():
+            fig.add_trace(go.Scatter(x=s_in.index, y=s_in, name=html.escape(f"Put in: {plain_name(name)}"),
+                                     hovertemplate="%{y:,.0f}", showlegend=False,
+                                     line=dict(color=colors[name], dash="dot", width=1, shape="hv")), row=1, col=1)
         for name, r in results.items():
             fig.add_trace(go.Scatter(x=lines[name].index, y=lines[name], name=html.escape(plain_name(name)), hovertemplate="%{y:,.0f}",
                                      line=dict(color=colors[name], width=2.6 if name == OWN else 1.8)),
@@ -1558,12 +1570,12 @@ if results:
         # names at the line ends instead of a legend, nudged apart so they don't overlap; on a phone those
         # labels would take half the width, so a legend below the chart takes their place
         phone = on_phone()
-        values = pd.concat(list(lines.values()) + [invested])
+        values = pd.concat(list(lines.values()) + ([invested] if not put_in else list(put_in.values())))
         lo, hi = max(values.min(), 1e-9) * 0.95, values.max() * 1.05
         if scale == "Log":
             lo, hi = np.log10(lo), np.log10(hi)
         ends = sorted([(n, s.iloc[-1], colors[n]) for n, s in lines.items()] +
-                      [("You put in", invested.iloc[-1], readable("#5f636e"))], key=lambda x: -x[1])
+                      ([] if put_in else [("You put in", invested.iloc[-1], readable("#5f636e"))]), key=lambda x: -x[1])
         y_prev = 1.08
         for name, value, color in ([] if phone else ends):
             y = ((np.log10(value) if scale == "Log" else value) - lo) / (hi - lo)
@@ -1578,7 +1590,9 @@ if results:
                           legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, title=None))  # above the chart
         screen_reader_text("Growth chart: " + "; ".join(
             f"{n.removesuffix(' (editing)')} ends at {money(v, base_ccy, True)}" for n, v, _ in ends
-            if n != "You put in") + f"; you put in {money(invested.iloc[-1], base_ccy, True)}.")
+            if n != "You put in") + "; you put in " + (
+            ", ".join(f"{money(v.iloc[-1], base_ccy, True)} ({plain_name(n)})" for n, v in put_in.items())
+            if put_in else money(invested.iloc[-1], base_ccy, True)) + ".")
         st.plotly_chart(fig, key=f"growth_{st.session_state.get('zoom_round', 0)}",
                         config={"displayModeBar": False} if phone else {})
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
@@ -1588,7 +1602,15 @@ if results:
         st.markdown(METHOD)  # the formulas are LaTeX, so its $ signs are meant
     if own:
         weights = dict(entries[0][1])
+        def open_pie_line():
+            """By asset and Holdings show the open pie: say which."""
+            st.html(f'<div style="font-weight:600;color:{readable(st.session_state.own_color)}">● '
+                    f'{html.escape(st.session_state.pie_name)} · the open pie'
+                    + ('<span style="font-weight:400;opacity:.78"> (Edit another pie to see its assets)</span>'
+                       if len(results) > 1 else '') + '</div>')
+
         with tabs["By asset"]:
+            open_pie_line()
             vals = res["values"].rename(columns=lambda t: html.escape(names.get(t, t)))
             fig = px.area(vals, color_discrete_sequence=shades(st.session_state.own_color, len(names)))
             fig.update_layout(height=450, hovermode="x unified", yaxis_title=ccy, legend_title="",
@@ -1603,6 +1625,7 @@ if results:
                                legend=dict(orientation="h", y=-0.2) if on_phone() else {})
             st.plotly_chart(fig2, config={"displayModeBar": False} if phone else {})
         with tabs["Holdings"]:
+            open_pie_line()
             table = engine.per_asset_table(res, weights, names)
             st.dataframe(table, hide_index=True, width="stretch",
                          column_order=(["Ticker", "Current %", "Value", "Gain"] if on_phone() else

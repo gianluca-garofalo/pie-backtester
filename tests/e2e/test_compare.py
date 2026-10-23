@@ -285,3 +285,21 @@ def test_why_other_pies_cant_be_edited_is_on_the_page(app, tmp_path):
     app.upload(path)  # opens at 70%; All-World stays compared
     expect(app.card("All-World ETF").get_by_role("button", name="Edit", exact=True)).to_be_disabled()
     expect(app.page.get_by_text("Finish 'Unfinished' (weights at 100%) to edit the other pies.")).to_be_visible()
+
+
+def test_each_pie_has_its_own_put_in_line_when_starts_differ(app):
+    app.load_example("Tech Leaders")
+    app.load_example("All-World ETF")
+    app.set_date("From", "2015-01-01")
+    start_choice(app).get_by_text("Each pie from its own first price").click()
+    app.wait()
+    text = app.page.locator(".sr-only", has_text="Growth chart").inner_text()
+    assert "you put in" in text and "(Tech Leaders)" in text and "(All-World ETF)" in text, text
+
+
+def test_result_rows_line_up_across_five_cards(app):
+    for name in ["All-World ETF", "Dividend Focus", "60/40 Stocks & Bonds", "Tech Leaders", "Three-Fund Portfolio"]:
+        app.load_example(name)
+    for row in ("value", "return", "per_year", "worst_fall"):
+        ys = [b["y"] for b in (el.bounding_box() for el in app.page.locator(f"[class*='st-key-val_'][class*='_{row}']").all())]
+        assert len(ys) == 5 and max(ys) - min(ys) <= 2, (row, ys)

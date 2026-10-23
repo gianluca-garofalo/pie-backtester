@@ -245,7 +245,9 @@ def window_label(first, last) -> str:
     """'29 Jul 2019 – 23 Oct 2026 · 7.2 yrs', or '· 5 months' under a year."""
     first, last = pd.Timestamp(first), pd.Timestamp(last)
     years = (last - first).days / 365.25
-    length = f"{years:.1f} yrs" if years >= 1 else f"{round(years * 12)} months"
+    months = round(years * 12)
+    length = (f"{years:.1f} yrs" if years >= 1 else "under a month" if months < 1
+              else f"{months} month{'' if months == 1 else 's'}")
     return f"{first.day} {first:%b %Y} – {last.day} {last:%b %Y} · {length}"
 
 
