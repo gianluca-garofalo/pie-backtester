@@ -189,6 +189,21 @@ def scale_to_100():
     pie_changed()
 
 
+def readable(color):
+    """A pie colour as shown on the page. On the dark theme it's lightened until it has 4.5:1 contrast on
+    the dark background (the blue was 3.7:1); the light theme shows it as it is."""
+    if (getattr(st.context.theme, "type", None) or "light") != "dark":
+        return color
+    r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    for f in (0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6):  # mix in white, a step at a time
+        c = tuple(round(v + (255 - v) * f) for v in (r, g, b))
+        lum = sum(w * ((x / 255) / 12.92 if x / 255 <= 0.03928 else ((x / 255 + 0.055) / 1.055) ** 2.4)
+                  for w, x in zip((0.2126, 0.7152, 0.0722), c))
+        if (lum + 0.05) / (0.0067 + 0.05) >= 4.5:  # 0.0067: the luminance of Streamlit's dark background
+            break
+    return "#%02x%02x%02x" % c
+
+
 def shades(color, n):
     """n shades of one colour, darkest first: the slices of a pie's donut."""
     r, g, b = (int(color[i:i + 2], 16) for i in (1, 3, 5))
@@ -905,8 +920,8 @@ summary_slot.caption(summary.replace("$", "\\$"))  # a bare $ would start Markdo
 if results:
     st.divider()
     # each pie keeps the colour of its chip in every chart and table
-    colors = {OWN: st.session_state.own_color} | {e["name"]: e.get("color") or "#8a8d96"
-                                                  for e in st.session_state.compare}
+    colors = {OWN: readable(st.session_state.own_color)} | {e["name"]: readable(e.get("color") or "#8a8d96")
+                                                            for e in st.session_state.compare}
     if own:
         res, ccy = own, base_ccy
         m = engine.metrics(res)
@@ -928,7 +943,7 @@ if results:
         deposits = int((res["invested"].diff() > 0).sum())
         gain = m["profit"]
         if len(results) > 1:  # with several pies on the charts, say which one the tiles describe
-            st.html(f'<div style="font-weight:600;color:{st.session_state.own_color}">● '
+            st.html(f'<div style="font-weight:600;color:{readable(st.session_state.own_color)}">● '
                     f'{html.escape(st.session_state.pie_name)} <span style="opacity:.7;font-weight:400">'
                     f'(the pie you\'re editing)</span></div>')
         with st.container(horizontal=True):
@@ -998,7 +1013,7 @@ if results:
         if scale == "Log":
             lo, hi = np.log10(lo), np.log10(hi)
         ends = sorted([(n, s.iloc[-1], colors[n]) for n, s in lines.items()] +
-                      [("You put in", invested.iloc[-1], "#5f636e")], key=lambda x: -x[1])
+                      [("You put in", invested.iloc[-1], readable("#5f636e"))], key=lambda x: -x[1])
         y_prev = 1.08
         for name, value, color in ([] if phone else ends):
             y = ((np.log10(value) if scale == "Log" else value) - lo) / (hi - lo)
