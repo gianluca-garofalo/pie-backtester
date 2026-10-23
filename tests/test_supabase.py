@@ -117,3 +117,23 @@ def test_new_style_secret_keys_go_only_in_the_apikey_header(calls):
     storage.SupabaseStorageBackend(url="https://x.supabase.co", key="sb_secret_abc").list_pies()
     assert calls[0]["headers"]["apikey"] == "sb_secret_abc"
     assert "Authorization" not in calls[0]["headers"]
+
+
+def test_a_missing_table_is_reported_not_shown_as_no_pies(db, calls):
+    calls.replies.append(Resp(404))
+    assert db.list_pies(user_id="google:123") == []
+    assert "404" in db.last_error and "migration" in db.last_error
+
+
+def test_a_wrong_key_is_reported(db, calls):
+    calls.replies.append(Resp(401))
+    db.list_pies()
+    assert "service_role" in db.last_error
+
+
+def test_a_successful_read_clears_the_error(db, calls):
+    calls.replies += [Resp(500), Resp(rows=[])]
+    db.list_pies()
+    assert db.last_error.startswith("HTTP 500")
+    db.list_pies()
+    assert db.last_error is None

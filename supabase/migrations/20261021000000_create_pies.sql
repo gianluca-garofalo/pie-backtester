@@ -1,5 +1,9 @@
 -- Supabase Database Schema for Pie Backtester
 --
+-- Supabase's GitHub integration applies this migration on a push to main ("Deploy to production").
+-- It is safe to run on a database that already has the table, so it can also be pasted into the
+-- SQL Editor. Change the schema with a new migration file; never edit this one once it has run.
+--
 -- The app reads and writes this table only from the Streamlit server, using the
 -- service key, and scopes every query to the signed-in user itself. owner_id is the
 -- app's user id ("google:<sub>" from Streamlit's Google sign-in), not a Supabase Auth user.

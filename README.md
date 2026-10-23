@@ -51,7 +51,7 @@ server_metadata_url = "https://accounts.google.com/.well-known/openid-configurat
 ```
 
 1. In Google Cloud Console, create an OAuth client of type "Web application" and add the `redirect_uri` above as an authorized redirect URI.
-2. Run `schema.sql` in the Supabase SQL Editor. It creates the `pies` table, or upgrades the earlier one, with row-level security on and no policies, so the public anon key can't read or write pies.
+2. Create the table from `supabase/migrations/20261021000000_create_pies.sql`: let Supabase's GitHub integration deploy it (**Deploy to production** on `main`), or paste it into the SQL Editor. It creates the `pies` table, or upgrades the earlier one, with row-level security on and no policies, so the public anon key can't read or write pies.
 
 With Supabase configured:
 - Visitors who aren't signed in can browse and load public pies, but can't save.

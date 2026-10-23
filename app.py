@@ -427,6 +427,8 @@ with pies_box:
     st.divider()
     side_label("My pies")
     saved_pies = active_storage.list_pies(user_id=user_id)
+    if getattr(active_storage, "last_error", None):
+        st.warning(f"Supabase answered with an error, so saved pies can't be shown: {active_storage.last_error}.")
     with st.expander(f"Saved pies ({len(saved_pies)})"):
         if saved_pies:
             def is_mine(p):

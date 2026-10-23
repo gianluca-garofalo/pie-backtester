@@ -47,6 +47,15 @@ def requests_log(monkeypatch):
     return log
 
 
+def test_supabase_errors_are_shown_in_the_sidebar(monkeypatch):
+    class Missing(Resp):
+        status_code = 404
+
+    monkeypatch.setattr(storage.requests, "get", lambda url, params=None, **kw: Missing([]))
+    at = run_app(SUPABASE_URL="https://x.supabase.co", SUPABASE_SERVICE_KEY="service")
+    assert any("Supabase answered with an error" in w.value and "migration" in w.value for w in at.sidebar.warning)
+
+
 def run_app(**secrets):
     at = AppTest.from_file(APP, default_timeout=30)
     for key, value in secrets.items():

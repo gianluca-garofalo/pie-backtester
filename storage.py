@@ -215,9 +215,17 @@ class SupabaseStorageBackend:
     Owners are app user ids (e.g. "google:<sub>"), not Supabase Auth users.
     """
 
+    # what usually causes each answer, for the warning in the sidebar
+    ERROR_HINTS = {
+        401: "the key isn't the secret/service_role key",
+        403: "the key isn't the secret/service_role key",
+        404: "the pies table doesn't exist yet: deploy or run the migration in supabase/migrations/",
+    }
+
     def __init__(self, url: str, key: str):
         self.table = f"{url.rstrip('/')}/rest/v1/pies"
         self.key = key
+        self.last_error: str | None = None  # why the last read failed; None after a successful one
 
     def _headers(self) -> dict[str, str]:
         headers = {"apikey": self.key, "Content-Type": "application/json", "Prefer": "return=representation"}
@@ -235,13 +243,19 @@ class SupabaseStorageBackend:
         return pie
 
     def _select(self, params: dict[str, str]) -> list[dict[str, Any]]:
+        # A failed read returns no pies, so the app keeps working; last_error says why,
+        # so a missing table or a wrong key doesn't look like "no pies saved yet".
         try:
             resp = requests.get(self.table, params={"select": "*", **params}, headers=self._headers(), timeout=5)
-            if resp.status_code == 200:
-                return [self._from_row(r) for r in resp.json()]
-        except Exception:
-            pass
-        return []
+        except Exception as e:
+            self.last_error = f"couldn't reach Supabase ({e})"
+            return []
+        if resp.status_code != 200:
+            hint = self.ERROR_HINTS.get(resp.status_code)
+            self.last_error = f"HTTP {resp.status_code}" + (f": {hint}" if hint else f" ({resp.text[:200]})")
+            return []
+        self.last_error = None
+        return [self._from_row(r) for r in resp.json()]
 
     @staticmethod
     def _visible_to(user_id: str | None) -> dict[str, str]:

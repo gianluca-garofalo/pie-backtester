@@ -40,9 +40,11 @@ You don't need to add scopes. Sign-in only uses the basic `openid`, `email` and 
 1. In [Supabase](https://supabase.com/dashboard), click **New project**.
    - Pick a name, a database password (save it somewhere) and a region close to your users.
    - Wait for the project to finish setting up.
-2. Open **SQL Editor → New query**. Paste the whole of [`schema.sql`](../schema.sql) and click **Run**. You should see "Success. No rows returned".
-   - This creates the `pies` table and switches on row-level security.
-   - If you ran an older `schema.sql` before, the same script upgrades that table.
+2. Create the `pies` table. The schema lives in [`supabase/migrations/`](../supabase/migrations/), and either way below works:
+   - **From GitHub (recommended):** in **Project Settings → Integrations → GitHub**, connect the repository. Set the working directory to `.` (the repo root, which holds the `supabase/` folder), turn on **Deploy to production**, and choose `main` as the production branch. Supabase then applies every new migration when you push or merge to `main`. Connecting the repo alone does nothing: **Deploy to production** must be on, and the migration only runs on the next push to `main`.
+   - **By hand:** open **SQL Editor → New query**, paste the whole of [`20261021000000_create_pies.sql`](../supabase/migrations/20261021000000_create_pies.sql) and click **Run**. You should see "Success. No rows returned".
+
+   The migration creates the table and switches on row-level security. It's safe to run on a project that already has the table, including one made with the older `schema.sql`, which it upgrades.
 3. Check the result in **Table Editor**. There should be a `pies` table with a `owner_id` column of type `text`, and it should be marked *RLS enabled*.
 
 ## Step 3: Copy the Supabase URL and secret key
@@ -130,10 +132,12 @@ These steps are for [Streamlit Community Cloud](https://share.streamlit.io). Oth
 |---|---|
 | "Google sign-in isn't set up, so pies can't be saved" | The `[auth]` or `[auth.google]` section is missing a key. All of `redirect_uri`, `cookie_secret`, `client_id`, `client_secret` and `server_metadata_url` are needed. Restart Streamlit after editing secrets. |
 | A yellow warning about `SUPABASE_KEY` | You still have the old anon key setting. Replace it with `SUPABASE_SERVICE_KEY` (step 3). |
+| "Internal server error" at `…/auth/login`, right after clicking Sign in | `httpx` isn't installed, so Streamlit can't start the sign-in. `requirements.txt` must have `streamlit[auth]` (it brings Authlib and httpx), not just `authlib`. On Streamlit Cloud, reboot the app after changing requirements. |
+| "Bad request" (400) at `…/auth/login` | Streamlit couldn't read Google's settings from `server_metadata_url`. It must be exactly `https://accounts.google.com/.well-known/openid-configuration`, with no trailing slash. |
 | Google says `redirect_uri_mismatch` | The URI in `secrets.toml` and the one in the Google client must match exactly: `http` vs `https`, port, and no trailing slash. |
 | Google says "Access blocked" or that the app hasn't completed verification | Your account isn't a test user (step 1.3), or publish the app (step 6.6). |
 | "Failed to save pie: HTTP 401" or "permission denied" | The key isn't the secret/service_role key. Copy it again (step 3). |
-| "Failed to save pie: HTTP 404" or "relation pies does not exist" | `schema.sql` hasn't been run in this project (step 2.2). |
+| "Failed to save pie: HTTP 404" or "relation pies does not exist" | The `pies` table doesn't exist yet (step 2.2): the migration hasn't been deployed or run. The app also warns "Supabase answered with an error" in this case. |
 | "Maximum pie limit (20) reached" | Each user can keep 20 pies. Delete one, or raise `MAX_PIES_PER_USER` in `storage.py`. |
 | Saved pies disappear after a restart in local mode | Without Supabase, pies live in `saved_pies.json` in the folder the app runs from. |
 
