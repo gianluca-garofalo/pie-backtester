@@ -129,8 +129,8 @@ def test_save_load_delete(app):
 
     app.click("Edit", root=app.sidebar, exact=True)
     dialog = app.page.get_by_role("dialog")
-    dialog.get_by_label("Name").fill("E2E renamed")
-    dialog.get_by_text("Public").click()
+    dialog.get_by_label("Pie name").fill("E2E renamed")
+    dialog.get_by_text("Make public").click()
     dialog.get_by_role("button", name="Save changes").click()
     app.wait()
     expect(app.page.get_by_text("Updated 'E2E renamed' (public).")).to_be_visible()
@@ -357,8 +357,8 @@ def test_rename_cannot_take_another_pies_name(app):
     app.choose("Saved pies", "E2E dup B (3 assets)")
     app.click("Edit", root=app.sidebar, exact=True)
     dialog = app.page.get_by_role("dialog")
-    dialog.get_by_label("Name").fill("e2e  DUP a")  # same name to a person: case and spaces differ
-    dialog.get_by_label("Name").press("Enter")
+    dialog.get_by_label("Pie name").fill("e2e  DUP a")  # same name to a person: case and spaces differ
+    dialog.get_by_label("Pie name").press("Enter")
     app.wait()
     expect(dialog.get_by_text("You already have a pie called 'E2E dup A'. Pick another name.")).to_be_visible()
     expect(dialog.get_by_role("button", name="Save changes")).to_be_disabled()

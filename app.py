@@ -469,6 +469,9 @@ REBALANCE_LABELS = {"Never": "Never", "Monthly": "Month", "Quarterly": "Quarter"
 money = engine.money
 
 
+PUBLIC_HELP = "Public pies are listed for everyone who opens the app, signed in or not."  # Save and Edit say the same
+
+
 @st.dialog("Save pie")
 def save_dialog():
     name = st.text_input("Pie name", value=st.session_state.pie_name, max_chars=storage.MAX_NAME_LENGTH)
@@ -476,7 +479,7 @@ def save_dialog():
     mine = [p for p in active_storage.list_pies(user_id=user_id)
             if not shared_storage or p.get("owner_id") == user_id]
     same = next((p for p in mine if storage.same_name(p["name"], name)), None)
-    is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")))
+    is_pub = st.checkbox("Make public", value=bool(same and same.get("is_public")), help=PUBLIC_HELP)
     if same:
         st.caption(f"You already have a saved pie called '{md(same['name'])}'. Saving updates it. "
                    "To keep both, change the name.")
@@ -498,9 +501,8 @@ def save_dialog():
 @st.dialog("Edit saved pie")
 def edit_dialog(pie):
     """Rename a saved pie, or make it public or private."""
-    name = st.text_input("Name", value=pie["name"], max_chars=storage.MAX_NAME_LENGTH)
-    is_pub = st.toggle("Public", value=bool(pie.get("is_public")),
-                       help="Public pies are listed for everyone who opens the app, signed in or not.")
+    name = st.text_input("Pie name", value=pie["name"], max_chars=storage.MAX_NAME_LENGTH)
+    is_pub = st.checkbox("Make public", value=bool(pie.get("is_public")), help=PUBLIC_HELP)
     # two of your pies can't share a name: saving under a name updates that pie
     taken = next((p for p in active_storage.list_pies(user_id=user_id)
                   if p["id"] != pie["id"] and (not shared_storage or p.get("owner_id") == user_id)
