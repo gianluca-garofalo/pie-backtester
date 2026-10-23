@@ -75,16 +75,24 @@ def load_pie(cfg):
     The pie being replaced moves to the comparison (if it's complete and not the same pie),
     so loading several pies one after another compares them; ✕ removes one. All compared pies
     share the sidebar settings, so a pie added to a comparison keeps the current ones.
+    Returns False, changing nothing, when the comparison has no room for the pie being replaced.
     """
-    st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
     loaded = {str(a["ticker"]).upper(): float(a["weight"]) for a in cfg.get("assets", []) if float(a["weight"]) > 0}
-    if previous and storage.adds_up(sum(previous.values())) and previous != loaded:
+    others = [e for e in st.session_state.compare if e["weights"] != loaded]  # a compared pie that's opened leaves
+    moving = (previous and storage.adds_up(sum(previous.values())) and previous != loaded
+              and not any(e["weights"] == previous for e in others))
+    if moving and len(others) >= MAX_COMPARED - 1:
+        flash("warning", f"You can compare up to {MAX_COMPARED} pies, including the one you're editing. "
+                         f"Remove one with ✕ first, then open '{md(cfg.get('name') or 'Pie')}'.")
+        return False
+    st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
+    st.session_state.compare = others
+    if moving:
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                                       for a in st.session_state.pie if a["Ticker"] in previous]},
                           color=st.session_state.own_color)
-    st.session_state.compare = [e for e in st.session_state.compare if e["weights"] != loaded]
     st.session_state.own_color = free_color({e.get("color") for e in st.session_state.compare})
     st.session_state.pie_name = cfg.get("name") or "My Pie"
     st.session_state.pie = [
@@ -117,6 +125,7 @@ def load_pie(cfg):
     else:
         st.session_state.pending_settings = pending
     pie_changed()
+    return True
 
 
 def close_open_pie():
@@ -501,8 +510,10 @@ with pies_box:
                 format_func=lambda i: f"{by_id[i]['name']} ({len(by_id[i]['assets'])} assets)"
                                       + ("" if is_mine(by_id[i]) else " · public"))
             if picked and picked != st.session_state.get("opened_saved_id"):
-                load_pie(by_id[picked])
-                st.session_state.opened_saved_id, st.session_state.clear_saved_pick = picked, False
+                if load_pie(by_id[picked]):
+                    st.session_state.opened_saved_id, st.session_state.clear_saved_pick = picked, False
+                else:
+                    st.session_state.clear_saved_pick = True  # not opened: don't show it as picked
                 st.rerun()
             target_sp = by_id.get(picked)
             if target_sp and is_mine(target_sp):

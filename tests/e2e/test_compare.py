@@ -1,3 +1,5 @@
+import json
+
 from playwright.sync_api import expect
 
 
@@ -92,3 +94,18 @@ def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
     expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("EUR")
     expect(app.page.get_by_role("radiogroup", name="Rebalance to target")
            .get_by_role("radio", checked=True)).to_have_text("Never")
+
+
+def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):
+    names = ["All-World ETF", "Dividend Focus", "60/40 Stocks & Bonds", "Tech Leaders", "Three-Fund Portfolio"]
+    for name in names:
+        app.load_example(name)
+    before = app.chips()
+    assert len(before) == 5
+    path = tmp_path / "sixth.json"
+    path.write_text(json.dumps({"name": "Sixth", "assets": [{"ticker": "EIMI.L", "weight": 100}]}))
+    app.open_sidebar_section("Import / export JSON")
+    app.sidebar.locator("input[type=file]").set_input_files(path)
+    app.wait()
+    expect(app.page.get_by_text("Remove one with ✕ first, then open 'Sixth'.")).to_be_visible()
+    assert app.chips() == before  # the pie being edited used to be dropped here
