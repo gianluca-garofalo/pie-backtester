@@ -272,6 +272,10 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
+/* secondary text at 78% of the text colour (about 6:1 on white, still fine in dark mode); Streamlit's
+   own grey was about 3.5:1, under the 4.5:1 that WCAG asks for */
+[data-testid=stCaptionContainer],input::placeholder,textarea::placeholder{
+  color:inherit !important;opacity:.78}
 </style>"""
 
 
