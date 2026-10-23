@@ -578,13 +578,15 @@ head, actions = st.columns([3, 2], vertical_alignment="bottom")
 head.title("Pie backtester")
 summary_slot = head.empty()  # filled once the results know the last price date
 with actions.container(horizontal=True, horizontal_alignment="right"):
-    if st.session_state.pop("close_examples", False):
-        st.session_state.examples_pop = False  # close it once a pie is loaded
-    with st.popover("Examples", icon=":material/auto_awesome:", key="examples_pop", on_change="rerun"):
+    # A new key after each pick draws a fresh, closed menu. Forcing the old one's state closed instead
+    # raced with a quick next click on Examples, which then needed a second click.
+    examples_round = st.session_state.setdefault("examples_round", 0)
+    with st.popover("Examples", icon=":material/auto_awesome:", key=f"examples_pop_{examples_round}",
+                    on_change="rerun"):
         for i, ex in enumerate(examples):
             if st.button(md(ex["name"]), key=f"ex_pop_{i}", width="stretch"):
                 load_pie(ex)
-                st.session_state.close_examples = True
+                st.session_state.examples_round += 1  # closes the menu
                 st.rerun()
     can_save = bool(st.session_state.pie) and not (shared_storage and not user_id)
     if st.button("Save", icon=":material/save:", key="save_open", disabled=not can_save,
