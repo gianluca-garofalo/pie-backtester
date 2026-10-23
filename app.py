@@ -170,18 +170,13 @@ def side_label(text):
     st.html(f'<div class="side-label">{text}</div>')
 
 
-# The sidebar needs some CSS to fit design A: dates and four rebalance buttons side by side in 240px.
+# The sidebar needs some CSS to fit design A: four rebalance buttons side by side in 240px.
 # It uses Streamlit's test ids, so check it after a Streamlit upgrade.
 SIDEBAR_CSS = """<style>
 .side-label{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.75}
-[data-testid=stSidebar] [data-testid=stDateInputField]{padding-left:.6rem;padding-right:.4rem}
-[data-testid=stSidebar] [data-testid=stDateInputField] [role=group]{padding-left:0;padding-right:0}
-[data-testid=stSidebar] [data-testid=stDateInputField] [role=group] span{padding:0}
-[data-testid=stSidebar] [data-testid=stDateInputField] > div:last-child{width:auto}
-[data-testid=stSidebar] [data-testid=stDateInputCalendarButton]{padding:0}
 .st-key-rebalance [role=radiogroup]{flex-wrap:nowrap}
 .st-key-rebalance button{padding-left:0;padding-right:0;flex:1 1 0;min-width:0}
-.st-key-initial button,.st-key-monthly button{display:none}
+.st-key-initial button,.st-key-monthly button{display:none}  /* the +/- steppers */
 [data-testid=stSidebar] [data-testid=stExpander] details{border:none;background:none}
 [data-testid=stSidebar] [data-testid=stExpander] summary{padding:0;min-height:1.6rem}
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
@@ -427,23 +422,21 @@ with account_box:
 with settings_box:
     side_label("Backtest settings")
     base_ccy = st.selectbox("Currency", CURRENCIES, key="base_ccy")
-    c_from, c_to = st.columns(2)
     # Streamlit's default lower bound is only ten years back
-    start = c_from.date_input("From", min_value=date(1970, 1, 1), max_value=date.today(), key="start",
-                              format="YYYY-MM-DD")
-    end = c_to.date_input("To", min_value=date(1970, 1, 1), max_value=date.today(), key="end",
+    start = st.date_input("From", min_value=date(1970, 1, 1), max_value=date.today(), key="start",
                           format="YYYY-MM-DD")
+    end = st.date_input("To", min_value=date(1970, 1, 1), max_value=date.today(), key="end",
+                        format="YYYY-MM-DD")
     if start >= end:
         st.warning("The start date must be before the end date.")
-    c_init, c_month = st.columns(2)
     # the currency shows as an icon in the field when Material has one, otherwise in the label
     ccy_icon = CURRENCY_ICONS.get(base_ccy)
     ccy_label = "" if ccy_icon else f" ({base_ccy})"
     # whole amounts without ".00", but cents stay visible when there are any (10.12)
-    initial = c_init.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format=amount_format("initial"),
-                                  icon=ccy_icon, key="initial")
-    monthly = c_month.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format=amount_format("monthly"),
-                                   icon=ccy_icon, key="monthly")
+    initial = st.number_input(f"Initial{ccy_label}", min_value=0.0, step=100.0, format=amount_format("initial"),
+                              icon=ccy_icon, key="initial")
+    monthly = st.number_input(f"Monthly{ccy_label}", min_value=0.0, step=50.0, format=amount_format("monthly"),
+                              icon=ccy_icon, key="monthly")
     if initial == 0 and monthly == 0:
         st.warning("Set an initial investment or a monthly deposit.")
     rebalance = st.segmented_control("Rebalance to target", list(engine.REBALANCE_RULES), required=True,
