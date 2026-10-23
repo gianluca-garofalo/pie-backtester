@@ -433,3 +433,9 @@ def test_links_say_why_they_cant_open_and_unfinished_ones_open(app):
     app.open("?p=Mine~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:60,EUNA.DE:30")  # 90%: opens, ready to fix
     assert app.tickers() == ["VWCE.DE", "EUNA.DE"]
     expect(app.page.get_by_text("Total 90.00% · 10.00% left")).to_be_visible()
+
+
+def test_charts_have_a_text_alternative(app):
+    app.load_example("All-World ETF")
+    text = app.page.locator(".sr-only").first.inner_text()
+    assert text.startswith("Growth chart: All-World ETF ends at €") and "you put in €" in text

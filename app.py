@@ -223,6 +223,11 @@ def md(text):
     return MD_SPECIAL.sub(r"\\\1", str(text))
 
 
+def screen_reader_text(text):
+    """A sentence only screen readers hear, e.g. what a chart shows (Plotly charts are unnamed images)."""
+    st.html(f'<p class="sr-only">{html.escape(text)}</p>')
+
+
 def flash(kind, msg):
     """Show a message after the st.rerun() that usually follows."""
     st.session_state.flash = (kind, msg)
@@ -287,6 +292,7 @@ SIDEBAR_CSS = """<style>
 [data-testid=stSidebar] [data-testid=stExpanderDetails]{padding-left:0;padding-right:0}
 .st-key-account p{font-size:.875rem}
 .st-key-account button p{text-decoration:underline}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 /* secondary text at 78% of the text colour (about 6:1 on white, still fine in dark mode); Streamlit's
    own grey was about 3.5:1, under the 4.5:1 that WCAG asks for */
 [data-testid=stCaptionContainer],input::placeholder,textarea::placeholder{
@@ -1026,6 +1032,9 @@ if results:
         fig.update_yaxes(title="% below high", row=2, col=1)
         fig.update_layout(height=560, hovermode="x unified", showlegend=phone, margin=dict(t=10, b=10, r=10 if phone else 190),
                           legend=dict(orientation="h", y=-0.12, x=0, title=None))
+        screen_reader_text("Growth chart: " + "; ".join(
+            f"{n.removesuffix(' (editing)')} ends at {money(v, base_ccy, True)}" for n, v, _ in ends
+            if n != "You put in") + f"; you put in {money(invested.iloc[-1], base_ccy, True)}.")
         st.plotly_chart(fig)
         for n, r in results.items():
             d = r["total"].index[0].date()
@@ -1050,6 +1059,8 @@ if results:
             fig.update_layout(height=450, hovermode="x unified", yaxis_title=ccy, legend_title="",
                               margin=dict(t=20, b=20),
                               legend=dict(orientation="h", y=-0.15) if on_phone() else {})
+            screen_reader_text("Value of each asset now: " + "; ".join(
+                f"{n}: {money(v, ccy, True)}" for n, v in vals.iloc[-1].items()) + ".")
             st.plotly_chart(fig)
             norm = engine.rebase(res["prices"]).rename(columns=names)
             fig2 = px.line(norm, color_discrete_sequence=PALETTE, title="Each asset, rebased to 100")
