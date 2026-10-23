@@ -380,3 +380,14 @@ def test_value_now_shows_the_gain_on_money_put_in(app):
     tile = app.page.get_by_test_id("stMetric").filter(has_text="Value now")
     expect(tile).to_contain_text(re.compile(r"gain \([+−-]\d+%\)"))  # the gain on money put in
     expect(app.page.get_by_test_id("stMetric").filter(has_text="Return")).to_contain_text("the pie's own growth")
+
+
+def test_a_us_listing_picked_from_search_is_kept(app):
+    # a euro pie used to flag NASDAQ's ASML as "no exchange suffix" and swap it for ASML.AS
+    app.page.get_by_label("Search by name, ticker or ISIN").fill("ASML")
+    app.page.keyboard.press("Enter")
+    app.wait()
+    app.click("Add to pie")  # the first result: ASML on NASDAQ
+    assert app.tickers() == ["ASML"]
+    expect(app.page.get_by_text("have no exchange suffix")).to_have_count(0)
+    assert app.metrics()  # results show without "Fix tickers"
