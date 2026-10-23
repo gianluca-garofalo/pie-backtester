@@ -586,8 +586,10 @@ with st.container(border=True):
     left, right = st.columns([3, 2], gap="large")
     with left:
         # assets come only from search, so every ticker is a real Yahoo listing
-        q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed",
-                          placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL")
+        if st.session_state.pop("clear_search", False):
+            st.session_state.search_q = ""  # after "Add to pie", so it's clear the asset went in
+        q = st.text_input("Search by name, ticker or ISIN", label_visibility="collapsed", key="search_q",
+                          placeholder="Search by name, ticker or ISIN, e.g. IE00BK5BQT80, AAPL").strip()
         if q:
             hits = cached_search(q)
             if not hits:
@@ -597,6 +599,7 @@ with st.container(border=True):
                 choice = st.selectbox("Results", range(len(hits)), format_func=lambda i: labels[i])
                 if st.button("Add to pie", type="primary"):
                     add_asset(hits[choice]["symbol"], hits[choice]["name"])
+                    st.session_state.clear_search = True
                     st.rerun()
 
         if not st.session_state.pie:
