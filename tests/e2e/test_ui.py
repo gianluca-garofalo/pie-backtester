@@ -70,12 +70,9 @@ def test_weight_column_is_visible_and_editable(app):
     headers = app.grid.locator("thead [role=columnheader]").all_text_contents()
     assert headers[:3] == ["Ticker", "Weight %", "Lock"]
 
-    app.edit_weight(0, 70)
+    app.edit_weight(0, 70, apply=False)
     assert float(app.rows()[0][1]) == 70
-    expect(app.page.locator(".st-key-result_own")).to_contain_text("once its weights add up to 100%")
-    assert not app.metrics()
-
-    editor = app.open_editor()
+    editor = app.editor
     expect(editor.get_by_text("Total 110.00% · 10.00% too much")).to_be_visible()
     app.click("Split evenly", root=editor)
     assert [float(r[1]) for r in app.rows()] == [50, 50]
@@ -318,7 +315,7 @@ def test_a_broken_file_says_why(app, tmp_path):
 def test_saving_under_the_same_name_updates_the_pie(app):
     app.load_example("60/40 Stocks & Bonds")
     app.save_pie("E2E update test")
-    app.edit_weight(0, 70)
+    app.edit_weight(0, 70, apply=False)
     app.edit_weight(1, 30)
     app.save_pie("E2E update test")
     expect(app.page.get_by_text("Updated pie 'E2E update test'.")).to_be_visible()
@@ -350,8 +347,7 @@ def test_a_file_with_text_for_an_amount_says_why(app, tmp_path):
 
 def test_share_carries_the_latest_edit(app):
     # the link used to be built before the table applied the edit, so it lagged one edit behind
-    app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 70)
+    app.open("?p=60%2F40~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:70,EUNA.DE:40")  # 110%
     app.page.get_by_role("button", name="Share").click()
     body = app.page.get_by_test_id("stPopoverBody")
     expect(body.get_by_text("Can't share this pie yet: weights must sum to 100% (got 110.00%).")).to_be_visible()
@@ -426,11 +422,10 @@ def test_a_start_date_in_the_future_says_so(app):
 
 
 def test_a_downloaded_unfinished_pie_opens_again(app, tmp_path):
-    app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 30)  # 30 + 40 = 70%
+    app.open("?p=Unfinished~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:30,EUNA.DE:40")  # 30 + 40 = 70%
     path = tmp_path / "unfinished.json"
     path.write_text(open(app.download()).read())
-    app.remove_pie("60/40 Stocks & Bonds")
+    app.remove_pie("Unfinished")
     app.upload(path)
     app.open_editor()
     assert [float(r[1]) for r in app.rows()] == [30, 40]  # used to say the weights must sum to 100%
@@ -464,7 +459,7 @@ def test_each_card_says_whether_the_pie_is_saved(app):
     expect(status).to_have_text("Not saved yet")
     app.save_pie("E2E status")
     expect(status).to_have_text("Saved")
-    app.edit_weight(0, 70)
+    app.edit_weight(0, 70, apply=False)
     app.edit_weight(1, 30)
     expect(status).to_have_text("Unsaved changes")
     app.save_pie("E2E status")  # updates it

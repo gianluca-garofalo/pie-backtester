@@ -38,8 +38,9 @@ def test_snapshot_of_your_own_pie(app):
     expect(app.page.get_by_text("This pie is already in the comparison as 'Tech Leaders (copy)'.")).to_be_visible()
     app.wait()
 
-    app.edit_weight(0, 70)  # weights now add up to 120%
-    expect(app.page.locator(".st-key-result_own")).to_contain_text("once its weights add up to 100%")
+    app.edit_weight(0, 70, apply=False)  # weights now add up to 120%: Apply waits, and says why
+    expect(app.editor.get_by_role("button", name="Apply")).to_be_disabled()
+    expect(app.editor.get_by_text("Apply needs the weights to add up to 100%")).to_be_visible()
 
 
 def test_a_copy_keeps_the_fund_names(app):
@@ -220,8 +221,8 @@ def test_phone_layout(phone):
 
 
 def test_an_unfinished_pie_that_cant_join_says_so(app):
-    app.load_example("60/40 Stocks & Bonds")
-    app.edit_weight(0, 30)  # 70%: can't be compared
+    app.open("?p=60%2F40+Stocks+%26+Bonds~EUR~2020-01-01~~1000~100~N~w~VWCE.DE:30,EUNA.DE:40")  # 70%: unfinished
+    expect(app.page.locator(".st-key-result_own")).to_contain_text("once its weights add up to 100%")
     app.page.get_by_role("button", name="Examples").click()
     app.page.get_by_test_id("stPopoverBody").get_by_role("button", name="All-World ETF", exact=True).click()
     expect(app.page.get_by_text("'60/40 Stocks & Bonds' was closed: its weights add up to 70.00%")).to_be_visible(
@@ -278,3 +279,12 @@ def test_the_chart_scale_stays_as_picked(app):
     start_choice(app).get_by_text("Each pie from its own first price").click()  # a longer period: >10 years
     app.wait()
     expect(tabs.get_by_role("radio", name="Linear", exact=True)).to_be_checked()  # used to flip to Log
+
+
+def test_why_other_pies_cant_be_edited_is_on_the_page(app, tmp_path):
+    app.load_example("All-World ETF")
+    path = tmp_path / "unfinished.json"
+    path.write_text(json.dumps({"name": "Unfinished", "assets": [{"ticker": "EIMI.L", "weight": 70}]}))
+    app.upload(path)  # opens at 70%; All-World stays compared
+    expect(app.card("All-World ETF").get_by_role("button", name="Edit", exact=True)).to_be_disabled()
+    expect(app.page.get_by_text("Finish 'Unfinished' (weights at 100%) to edit the other pies.")).to_be_visible()

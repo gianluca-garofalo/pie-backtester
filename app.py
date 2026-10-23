@@ -1029,11 +1029,15 @@ def editor_body():
                 st.caption(f"No preview: {md(e)}")
         elif live:
             st.caption("The preview appears once the weights add up to 100% and every ticker is found.")
+    # only a finished pie is applied: an unfinished one had no results and blocked editing the others
+    ready = bool(draft) and storage.adds_up(total) and not bare and not dupes
+    if draft and not ready:
+        st.caption("Apply needs the weights to add up to 100%" + (", every ticker found" if bare else "")
+                   + (", each ticker once" if dupes else "") + ". Discard changes keeps the pie as it was.")
     with st.container(horizontal=True, horizontal_alignment="right"):
         if st.button("Discard changes"):
             st.rerun()
-        can_save = (bool(draft) and storage.adds_up(total) and not bare and not dupes
-                    and not (shared_storage and not user_id))
+        can_save = ready and not (shared_storage and not user_id)
         if st.button("Replace in My pies" if replacing else "Save to My pies", icon=":material/save:", disabled=not can_save,
                      help="Sign in to save pies." if shared_storage and not user_id else None):
             if apply_draft():
@@ -1043,7 +1047,7 @@ def editor_body():
                 except Exception as ex:
                     flash("error", f"Failed to save pie: {ex}")
             st.rerun()
-        if st.button("Apply", type="primary", disabled=st.session_state.draft_new and not draft):
+        if st.button("Apply", type="primary", disabled=not ready):
             apply_draft()
             st.rerun()
 
@@ -1422,7 +1426,10 @@ with pies_slot:
         card_css()
         with st.container(horizontal=True, vertical_alignment="bottom"):
             st.subheader("Pies", anchor=False, width="content")
-            st.caption(f"{len(card_keys)} of {MAX_COMPARED} · the donuts show target weights", width="stretch")
+            st.caption(f"{len(card_keys)} of {MAX_COMPARED} · the donuts show target weights"
+                       + ("" if own_complete or not st.session_state.compare else
+                          md(f". Finish '{plain_name(OWN)}' (weights at 100%) to edit the other pies.")),
+                       width="stretch")
             if st.button("New pie", type="tertiary", disabled=len(card_keys) >= MAX_COMPARED,
                          help=None if len(card_keys) < MAX_COMPARED else f"Up to {MAX_COMPARED} pies: remove one first"):
                 start_editing(new=True)
