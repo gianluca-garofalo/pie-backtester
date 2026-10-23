@@ -40,6 +40,15 @@ if "compare" not in st.session_state:
     st.session_state.compare = []  # other pies to compare with yours: {"name", "weights", "names", "color"}
 st.session_state.setdefault("pie_name", "My Pie")  # name of the pie in the table
 st.session_state.setdefault("own_color", PIE_COLORS[0])
+# every pie keeps its place in the chip row: the pie being edited has own_order, compared ones "order"
+st.session_state.setdefault("own_order", 0)
+st.session_state.setdefault("next_order", 1)
+
+
+def new_order():
+    """The place for a pie that's new on screen: after all the others."""
+    st.session_state.next_order += 1
+    return st.session_state.next_order - 1
 
 MAX_COMPARED = 5  # pies in one comparison, including yours
 METHOD = (Path(__file__).parent / "docs" / "how-its-calculated.md").read_text()  # the "How it's calculated" tab
@@ -87,12 +96,15 @@ def load_pie(cfg):
                          f"Remove one with ✕ first, then open '{md(cfg.get('name') or 'Pie')}'.")
         return False
     st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
+    already = next((e for e in st.session_state.compare if e["weights"] == loaded), None)
     st.session_state.compare = others
     if moving:
         add_to_comparison({"name": st.session_state.pie_name,
                            "assets": [{"ticker": a["Ticker"], "weight": a["Weight %"], "name": a.get("Name")}
                                       for a in st.session_state.pie if a["Ticker"] in previous]},
-                          color=st.session_state.own_color)
+                          color=st.session_state.own_color, order=st.session_state.own_order)
+    if moving or already:  # a new pie on screen goes last; a compared one that's opened keeps its place
+        st.session_state.own_order = already["order"] if already and "order" in already else new_order()
     st.session_state.own_color = free_color({e.get("color") for e in st.session_state.compare})
     st.session_state.pie_name = cfg.get("name") or "My Pie"
     st.session_state.pie = [
@@ -138,6 +150,7 @@ def close_open_pie():
                                 for t, w in e["weights"].items()]
         st.session_state.pie_name = e["name"]
         st.session_state.own_color = e.get("color") or st.session_state.own_color
+        st.session_state.own_order = e.get("order", st.session_state.own_order)
     st.session_state.fix_report = None
     pie_changed()
 
@@ -149,6 +162,7 @@ def open_compared(i):
     if current:
         st.session_state.compare[i] = {
             "name": st.session_state.pie_name, "weights": current, "color": st.session_state.own_color,
+            "order": st.session_state.own_order,  # the two swap places in the chip row
             "names": {a["Ticker"]: a.get("Name") or a["Ticker"] for a in st.session_state.pie if a["Ticker"] in current}}
     else:
         st.session_state.compare.pop(i)
@@ -156,6 +170,7 @@ def open_compared(i):
                             for t, w in e["weights"].items()]
     st.session_state.pie_name = e["name"]
     st.session_state.own_color = e.get("color") or st.session_state.own_color
+    st.session_state.own_order = e.get("order", new_order())
     st.session_state.fix_report = None
     pie_changed()
 
@@ -322,7 +337,7 @@ def prices_for(tickers, start, end, base):
     return prices.loc[:pd.Timestamp(end)], {"currencies": currencies}
 
 
-def add_to_comparison(cfg, color=None):
+def add_to_comparison(cfg, color=None, order=None):
     """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
@@ -350,7 +365,8 @@ def add_to_comparison(cfg, color=None):
         name = f"{base[:-1]} {n})" if base.endswith(" (copy)") else f"{base} ({n})"
         n += 1
     color = color or free_color({e.get("color") for e in others} | {st.session_state.own_color})
-    others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color})
+    others.append({"name": name, "weights": weights, "names": {t: names[t] for t in weights}, "color": color,
+                   "order": new_order() if order is None else order})
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -735,8 +751,10 @@ export_slot.download_button("Download pie (.json)", pie_json, icon=":material/do
 
 # ---------------- the pie strip: one chip per loaded pie, in its colour ----------------
 own_complete = bool(st.session_state.pie) and storage.adds_up(total_w)
-chips = ([("own", OWN, st.session_state.own_color)] if st.session_state.pie else []) + \
-    [(str(i), e["name"], e.get("color") or "#8a8d96") for i, e in enumerate(st.session_state.compare)]
+chips = sorted(([(st.session_state.own_order, "own", OWN, st.session_state.own_color)] if st.session_state.pie else [])
+               + [(e.get("order", 0), str(i), e["name"], e.get("color") or "#8a8d96")
+                  for i, e in enumerate(st.session_state.compare)])
+chips = [(k, name, c) for _, k, name, c in chips]  # in the order the pies came on screen
 with strip:
     if chips:
         # Streamlit buttons can't be coloured, so each chip's container gets a small CSS rule

@@ -12,7 +12,7 @@ def test_loading_another_pie_keeps_the_previous_one(app):
     expect(app.page.get_by_role("heading", name="Compared pies")).to_have_count(0)
 
     app.load_example("60/40 Stocks & Bonds")
-    assert app.chips() == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
+    assert app.chips() == ["All-World ETF", "60/40 Stocks & Bonds (editing)"]  # in the order they were loaded
     expect(app.page.get_by_test_id("stAlert")).to_have_count(0)  # no banner about it
     assert [r[0] for r in comparison_rows(app)] == ["60/40 Stocks & Bonds (editing)", "All-World ETF"]
     assert app.metrics()  # tiles are for the pie being edited
@@ -124,3 +124,13 @@ def test_a_sixth_pie_is_refused_without_losing_one(app, tmp_path):
     app.wait()
     expect(app.page.get_by_text("Remove one with ✕ first, then open 'Sixth'.")).to_be_visible()
     assert app.chips() == before  # the pie being edited used to be dropped here
+
+
+def test_chips_keep_their_place_when_switching(app):
+    for name in ("All-World ETF", "Tech Leaders", "60/40 Stocks & Bonds"):
+        app.load_example(name)
+    assert app.chips() == ["All-World ETF", "Tech Leaders", "60/40 Stocks & Bonds (editing)"]
+    app.open_pie("All-World ETF")
+    assert app.chips() == ["All-World ETF (editing)", "Tech Leaders", "60/40 Stocks & Bonds"]
+    app.open_pie("Tech Leaders")
+    assert app.chips() == ["All-World ETF", "Tech Leaders (editing)", "60/40 Stocks & Bonds"]
