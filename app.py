@@ -604,14 +604,15 @@ with pies_box:
             try:
                 uploaded.seek(0)
                 raw_content = json.load(uploaded)
-                is_valid, err = storage.validate_pie(raw_content)
+                # a downloaded unfinished pie (not at 100%) opens too: the total line and Scale to 100% take over
+                is_valid, err = storage.validate_pie(raw_content, whole=False)
             except Exception as e:
                 is_valid, err = False, f"it isn't valid JSON ({e})"
             if not is_valid:
                 st.error(f"Could not load this file: {err}")
             elif st.session_state.get("loaded_file_id") != uploaded.file_id:
                 st.session_state.loaded_file_id = uploaded.file_id
-                load_pie(storage.normalize_pie(raw_content))
+                load_pie(storage.normalize_pie(raw_content, whole=False))
                 st.rerun()
 
 # ---------------- header: title, settings summary, actions ----------------

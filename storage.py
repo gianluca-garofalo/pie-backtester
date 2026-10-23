@@ -35,7 +35,7 @@ def adds_up(total: float) -> bool:
     return round(abs(total - 100.0), 6) <= 0.01
 
 
-def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
+def validate_pie(data: dict[str, Any], whole: bool = True) -> tuple[bool, str]:
     """Validate a pie schema.
 
     Expected format:
@@ -89,7 +89,7 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
             return False, f"Asset '{ticker}' weight cannot be negative"
         total_weight += w
 
-    if not adds_up(total_weight):
+    if whole and not adds_up(total_weight):  # whole=False: an unfinished pie, e.g. a file to finish later
         return False, f"Weights must sum to 100% (got {total_weight:.2f}%)"
 
     # the settings are optional, but must make sense when given
@@ -122,9 +122,9 @@ def validate_pie(data: dict[str, Any]) -> tuple[bool, str]:
     return True, ""
 
 
-def normalize_pie(data: dict[str, Any]) -> dict[str, Any]:
+def normalize_pie(data: dict[str, Any], whole: bool = True) -> dict[str, Any]:
     """Ensure pie data is in standard version 1 schema."""
-    is_valid, err = validate_pie(data)
+    is_valid, err = validate_pie(data, whole)
     if not is_valid:
         raise ValueError(f"Invalid pie data: {err}")
 

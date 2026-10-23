@@ -159,3 +159,10 @@ def test_storage_settings_match_the_engine():
     from storage import BEFORE_LISTING_OPTIONS, REBALANCE_OPTIONS
     assert tuple(engine.REBALANCE_RULES) == REBALANCE_OPTIONS
     assert tuple(engine.BEFORE_LISTING) == BEFORE_LISTING_OPTIONS
+
+
+def test_an_unfinished_pie_can_be_opened_but_not_saved():
+    pie = {"assets": [{"ticker": "A", "weight": 50}, {"ticker": "B", "weight": 20}]}  # 70%
+    assert not validate_pie(pie)[0]
+    assert validate_pie(pie, whole=False)[0]
+    assert sum(a["weight"] for a in normalize_pie(pie, whole=False)["assets"]) == 70

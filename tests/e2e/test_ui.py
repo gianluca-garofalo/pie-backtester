@@ -402,3 +402,18 @@ def test_a_start_date_in_the_future_says_so(app):
     app.set_date("From", f"{date.today().year + 1}-01-01")
     expect(app.page.get_by_text("The start date is in the future. Pick a date up to today.")).to_be_visible()
     assert not app.metrics()  # no stale results from the old dates
+
+
+def test_a_downloaded_unfinished_pie_opens_again(app, tmp_path):
+    app.load_example("60/40 Stocks & Bonds")
+    app.edit_weight(0, 30)  # 30 + 40 = 70%
+    app.open_sidebar_section("Import / export JSON")
+    with app.page.expect_download() as dl:
+        app.sidebar.get_by_role("button", name="Download pie (.json)").click()
+    path = tmp_path / "unfinished.json"
+    path.write_text(open(dl.value.path()).read())
+    app.click("Clear pie")
+    app.sidebar.locator("input[type=file]").set_input_files(path)
+    app.wait()
+    assert [float(r[1]) for r in app.rows()] == [30, 40]  # used to say the weights must sum to 100%
+    expect(app.page.get_by_text("Total 70.00% · 30.00% left")).to_be_visible()
