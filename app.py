@@ -731,7 +731,7 @@ names = {a["Ticker"]: a.get("Name") or a["Ticker"] for a in pie}
 entries = ([(OWN, tuple((a["Ticker"], float(a["Weight %"])) for a in pie))] if own_ready else []) + \
     [(e["name"], tuple(e["weights"].items())) for e in st.session_state.compare]
 
-results, late, currencies = {}, {}, {}
+results, late, currencies, joined = {}, {}, {}, {}
 if settings_ok and entries:
     with st.spinner("Loading prices and simulating…"):
         for name, assets in entries:
@@ -744,6 +744,20 @@ if settings_ok and entries:
                     st.error(f"Backtest failed: {e}")
                 else:
                     st.warning(f"'{name}' is left out: {e}")
+        # A pie that starts later begins with the average value of the pies that started earlier, as if
+        # the money had moved into it then, so the lines and "You put in" stay comparable. Its Return,
+        # Per year and Worst fall still cover only its own period.
+        first_day = {n: r["total"].index[0] for n, r in results.items()}
+        assets_of = dict(entries)
+        for name in sorted(results, key=first_day.get):
+            earlier = [results[o] for o in results if first_day[o] + pd.Timedelta(days=7) < first_day[name]]
+            if earlier:
+                value, put_in = engine.value_on(earlier, first_day[name])
+                value = round(value, 2)  # also keeps the cache key tidy
+                res_j, _, _ = cached_backtest(assets_of[name], start, end, base_ccy, value, monthly,
+                                              rebalance, before_listing)
+                results[name] = dict(res_j, invested=res_j["invested"] + (put_in - value))
+                joined[name] = (first_day[name].date(), value)
 
 own = results.get(OWN)
 
@@ -785,7 +799,8 @@ if results:
                       chart_data=res["total"].resample("W").last().tolist(), chart_type="area",
                       help=f"What the pie is worth on {res['total'].index[-1].date()}.")
             st.metric("You put in", money(m["invested"], ccy, True), border=True, height="stretch",
-                      delta=f"{money(initial, ccy, True)} + {deposits} deposits", delta_color="off", delta_arrow="off")
+                      delta=f"{money(res['invested'].iloc[0], ccy, True)} + {deposits} deposits",
+                      delta_color="off", delta_arrow="off")
             st.metric("Return", f"{m['twr_total'] * 100:+.1f}%", border=True, height="stretch",
                       delta="time-weighted", delta_color="off", delta_arrow="off",
                       help="How the pie itself performed, ignoring when the deposits were made.")
@@ -814,7 +829,8 @@ if results:
         def window(series):
             return series[series.index >= since]
 
-        first = own if own else next(iter(results.values()))
+        # every pie has the same amount put in (later ones join with it), so the earliest one draws it
+        first = min(results.values(), key=lambda r: r["total"].index[0])
         lines = {name: window(r["total"]) for name, r in results.items()}
         invested = window(first["invested"])
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.74, 0.26], vertical_spacing=0.05)
@@ -848,11 +864,16 @@ if results:
         fig.update_yaxes(title="% below high", row=2, col=1)
         fig.update_layout(height=560, hovermode="x unified", showlegend=False, margin=dict(t=10, b=10, r=190))
         st.plotly_chart(fig)
-        later = {n: r["total"].index[0].date() for n, r in results.items()
-                 if n != OWN and r["total"].index[0].date() > start + pd.Timedelta(days=7)}
-        for n, d in later.items():
-            st.caption(f"'{n}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
-                       "no earlier prices." if late[n] else f"'{n}' starts on {d}.")
+        for n, r in results.items():
+            d = r["total"].index[0].date()
+            if n in joined:
+                why = (f" ({', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} no earlier prices)"
+                       if late[n] else "")
+                st.caption(f"'{n}' starts on {d}{why} with {money(joined[n][1], base_ccy)}: the average value of "
+                           "the pies that started earlier, as if the money had moved into it then.".replace("$", "\\$"))
+            elif n != OWN and d > start + pd.Timedelta(days=7):
+                st.caption(f"'{n}' starts on {d}: {', '.join(late[n])} {'has' if len(late[n]) == 1 else 'have'} "
+                           "no earlier prices." if late[n] else f"'{n}' starts on {d}.")
         st.caption(f"Hypothetical backtest. Yahoo Finance prices with dividends reinvested, no fees or taxes, "
                    f"fractional shares, converted to {base_ccy}. Not financial advice: past performance doesn't "
                    "predict future returns.")

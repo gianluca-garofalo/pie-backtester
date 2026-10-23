@@ -15,4 +15,4 @@
 | **Drift** (holdings) | $\dfrac{u_{i,T}\,P_{i,T}}{V_T} - w_i$ | how far an asset has moved from its target weight, in percentage points |
 | **Gain** (holdings) | $\sum_t u_{i,t-1}\,(P_{i,t} - P_{i,t-1})$ | each day's price move times the units held; the assets' gains add up to the pie's gain |
 
-Compared pies use the same settings, and each one starts on its own first day with prices.
+Compared pies use the same settings, and each one starts on its own first day with prices. A pie that starts later than others begins with the average value of the pies that started earlier on that day, and the same amount put in, as if the money had moved into it then. Its Return, Per year and Worst fall cover only its own period.
