@@ -559,7 +559,10 @@ def pick_period():
 
 
 def custom_period():
-    st.session_state.period = "Custom"
+    """A date typed by hand makes the period Custom, but not a preset's own dates coming back: after a quick
+    next click the browser can send the dates a preset wrote, and that read as a hand edit."""
+    if (st.session_state.start, st.session_state.end) not in st.session_state.get("preset_dates", []):
+        st.session_state.period = "Custom"
 
 
 # a preset keeps the dates in step with it (5Y moves with today, Max with the loaded pies); set before the
@@ -570,6 +573,10 @@ if st.session_state.period != "Custom":
     if _from:
         st.session_state.start = _from
     st.session_state.end = date.today()
+    # the dates presets wrote lately, so custom_period() can tell them from dates typed by hand
+    _written = (st.session_state.start, st.session_state.end)
+    st.session_state.preset_dates = ([_written] + [d for d in st.session_state.get("preset_dates", [])
+                                                   if d != _written])[:8]
 
 
 # Determine active storage backend

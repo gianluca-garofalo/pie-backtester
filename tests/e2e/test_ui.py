@@ -633,3 +633,21 @@ def test_quick_adds_all_land(app):
         app.wait()
         app.eventually(app.tickers, ["AAPL", "MSFT", "NVDA", "GOOG", "TSLA"])
 
+
+
+def test_quick_preset_clicks_end_on_the_last_one(app):
+    # a preset's dates, sent back by the browser after a quick next click, counted as a date typed by hand
+    # and turned the period into Custom (about 3 in 20 runs)
+    import random
+    app.load_example("All-World ETF")
+    years = {"1Y": 1, "3Y": 3, "5Y": 5, "10Y": 10}
+    for _ in range(15):
+        clicks = random.sample(list(years), 4)
+        for p in clicks:
+            period(app).get_by_role("radio", name=p, exact=True).click()
+            app.page.wait_for_timeout(random.randint(20, 80))
+        app.wait()
+        expect(period(app).get_by_role("radio", name=clicks[-1], exact=True)).to_be_checked()
+        today = date.today()
+        assert date_of(app, "From") == date(today.year - years[clicks[-1]], today.month,
+                                            min(today.day, 28) if today.month == 2 else today.day)
