@@ -216,6 +216,18 @@ def add_asset(symbol: str, name: str):
     pie_changed()
 
 
+SORTS = {  # label: key for sorted(); the table, donut and holdings follow the pie's order
+    "Weight, high to low": lambda a: -float(a["Weight %"] or 0),
+    "Ticker, A–Z": lambda a: a["Ticker"],
+    "Name, A–Z": lambda a: (a.get("Name") or a["Ticker"]).lower(),
+}
+
+
+def sort_pie(label):
+    st.session_state.pie = sorted(st.session_state.pie, key=SORTS[label])
+    pie_changed()
+
+
 def split_evenly():
     n = len(st.session_state.pie)
     if n:
@@ -609,13 +621,24 @@ with st.container(border=True):
                     st.session_state.verified_tickers.add(t)
             bare = [a["Ticker"] for a in st.session_state.pie if is_bare(a["Ticker"])]
 
-            # the live total says why results are missing, before anyone looks for them
-            if abs(total_w - 100) <= 0.01:
-                st.markdown(":green[**Total 100% ✓**]")
-            elif total_w < 100:
-                st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]")
-            else:
-                st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]")
+            with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment="distribute"):
+                # the live total says why results are missing, before anyone looks for them
+                if abs(total_w - 100) <= 0.01:
+                    st.markdown(":green[**Total 100% ✓**]", width="content")
+                elif total_w < 100:
+                    st.markdown(f":orange[**Total {total_w:.2f}% · {100 - total_w:.2f}% left**]", width="content")
+                else:
+                    st.markdown(f":orange[**Total {total_w:.2f}% · {total_w - 100:.2f}% too much**]", width="content")
+                # sorting sits with the table it reorders, so the action buttons stay on one line
+                if st.session_state.pop("close_sort", False):
+                    st.session_state.sort_pop = False  # close the menu once the pie is sorted
+                with st.popover("Sort", key="sort_pop", on_change="rerun", type="tertiary",
+                                disabled=len(st.session_state.pie) < 2):
+                    for label in SORTS:
+                        if st.button(label, key=f"sort_{label}", type="tertiary"):
+                            sort_pie(label)
+                            st.session_state.close_sort = True
+                            st.rerun()
             with st.container(horizontal=True, vertical_alignment="center"):
                 if bare and st.button("Fix tickers", type="primary",
                                       help="Look up the exchange suffix Yahoo needs, e.g. VWRA → VWRA.L"):

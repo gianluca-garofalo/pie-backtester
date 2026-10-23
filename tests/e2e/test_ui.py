@@ -284,3 +284,16 @@ def test_saving_under_the_same_name_updates_the_pie(app):
     app.click("Load", root=app.sidebar, exact=True)
     assert [float(r[1]) for r in app.rows()] == [70, 30]
     app.click("Delete", root=app.sidebar, exact=True)
+
+
+def test_sort_the_assets(app):
+    app.load_example("Three-Fund Portfolio")
+    app.edit_weight(0, 20)
+    app.edit_weight(2, 40)  # weights now 20 / 20 / 40, and tickers SWRD.L, EIMI.L, EUNA.DE: neither sorted
+    app.page.get_by_role("button", name="Sort").click()
+    app.click("Weight, high to low")
+    weights = [float(r[1]) for r in app.rows()]
+    assert weights == sorted(weights, reverse=True)
+    app.page.get_by_role("button", name="Sort").click()
+    app.click("Ticker, A–Z")
+    assert app.tickers() == sorted(app.tickers())
