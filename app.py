@@ -1051,7 +1051,10 @@ if results:
                              "Gain": st.column_config.NumberColumn(
                                  f"Gain ({ccy})" if money_column(ccy) == "localized" else "Gain",
                                  format=money_column(ccy), help="What this asset added to the pie's gain"),
-                             "Price return %": st.column_config.NumberColumn(format="%+.1f"),
+                             "Price return %": st.column_config.NumberColumn(
+                                 "Price change since start", format="%+.1f%%",
+                                 help="How the asset's price moved over the period: not the return on the money put "
+                                      "into it, which depends on when the deposits came in"),
                              "History": st.column_config.AreaChartColumn("Value over time"),
                          })
             st.caption("Currencies of the listings: " +
