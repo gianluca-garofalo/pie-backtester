@@ -26,7 +26,8 @@ PALETTE = ["#1F6F78", "#E0A526", "#5B4B8A", "#C8553D", "#3E8E5E", "#2E4057",
            "#B56576", "#7A9E9F", "#D98E04", "#4F5D75", "#8AA29E", "#9C6644"]
 # one colour per pie, kept for as long as the pie is loaded (Okabe-Ito, colour-blind safe;
 # same list as chartCategoricalColors in .streamlit/config.toml)
-PIE_COLORS = ["#0072B2", "#B86E00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"]
+# Okabe-Ito-based; vermillion is last so it's rarely next to the orange (they were hard to tell apart)
+PIE_COLORS = ["#0072B2", "#B86E00", "#009E73", "#AA4499", "#56B4E9", "#D55E00"]
 
 if "pie" not in st.session_state:
     st.session_state.pie = []  # list of {"Ticker", "Name", "Weight %"}

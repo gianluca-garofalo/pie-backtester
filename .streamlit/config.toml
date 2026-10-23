@@ -1,9 +1,10 @@
 [theme.light]
 # a neutral accent: Streamlit's default red reads as "loss" in a finance app
 primaryColor = "#24364b"
-# Okabe-Ito, colour-blind safe; the orange is darkened for contrast on white
-chartCategoricalColors = ["#0072B2", "#B86E00", "#009E73", "#D55E00", "#CC79A7", "#56B4E9"]
+# Okabe-Ito, colour-blind safe; the orange is darkened for contrast on white, and a darker purple
+# comes before vermillion, which was hard to tell from the orange (same order as PIE_COLORS in app.py)
+chartCategoricalColors = ["#0072B2", "#B86E00", "#009E73", "#AA4499", "#56B4E9", "#D55E00"]
 
 [theme.dark]
 primaryColor = "#8fb3d9"
-chartCategoricalColors = ["#56B4E9", "#E69F00", "#009E73", "#D55E00", "#CC79A7", "#0072B2"]
+chartCategoricalColors = ["#56B4E9", "#E69F00", "#009E73", "#CC79A7", "#0072B2", "#D55E00"]
