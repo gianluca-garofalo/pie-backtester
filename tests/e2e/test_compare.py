@@ -333,3 +333,13 @@ def test_a_rename_cant_give_two_pies_one_name(app):
     app.wait()
     app.apply()
     assert app.cards() == ["All-World ETF", "All-World ETF (2)"]  # one card showed the other's numbers
+
+
+def test_the_coverage_strip_is_always_there(app):
+    app.load_example("All-World ETF")
+    strip = app.page.locator(".st-key-period").get_by_test_id("stPlotlyChart")
+    for preset in ("10Y", "5Y", "1Y"):  # VWCE.DE lists in 2019: only 10Y starts before that
+        app.page.locator(".st-key-period_pick").get_by_role("radio", name=preset, exact=True).click()
+        app.wait()
+        expect(strip).to_have_count(1)
+        expect(app.page.get_by_text("Every number and chart below covers")).to_be_visible()

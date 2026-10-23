@@ -1211,7 +1211,7 @@ def pick_start_rule():
 with period_detail:
     place = {OWN: st.session_state.own_order} | {e["name"]: e.get("order", 0) for e in st.session_state.compare}
     shown_pies = sorted([n for n, _ in entries if n in late or n in results], key=place.get)  # the cards' order
-    if late and shown_pies:
+    if shown_pies:  # always: it shows the days the results use, also when every asset has prices from From
         screen_reader_text("Which days each pie has prices for: " + "; ".join(
             f"{plain_name(n)} from {nice(results[n]['total'].index[0])}" for n in shown_pies if n in results) + ".")
         st.plotly_chart(coverage_figure(shown_pies), config={"staticPlot": True})

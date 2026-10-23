@@ -450,7 +450,7 @@ def test_links_say_why_they_cant_open_and_unfinished_ones_open(app):
 
 def test_charts_have_a_text_alternative(app):
     app.load_example("All-World ETF")
-    text = app.page.locator(".sr-only").first.inner_text()
+    text = app.page.locator(".sr-only", has_text="Growth chart").inner_text()
     assert text.startswith("Growth chart: All-World ETF ends at €") and "you put in €" in text
 
 
