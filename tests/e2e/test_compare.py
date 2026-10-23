@@ -252,3 +252,10 @@ def test_a_long_name_doesnt_squeeze_the_coverage_strip(app):
     app.load_example("Tech Leaders")
     labels = app.page.locator(".st-key-period [data-testid=stPlotlyChart] .ytick text").all_text_contents()
     assert labels and max(len(t) for t in labels) <= 25, labels  # cut with "…"
+
+
+def test_copy_works_on_any_card(app):
+    app.load_example("All-World ETF")
+    app.load_example("Tech Leaders")  # the open one; All-World is compared
+    copy_pie(app, "All-World ETF")  # was refused: "already in the comparison as 'All-World ETF'"
+    assert app.cards() == ["All-World ETF", "Tech Leaders", "All-World ETF (copy)"]

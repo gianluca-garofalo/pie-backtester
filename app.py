@@ -467,8 +467,9 @@ def prices_for(tickers, start, end, base):
     return prices.loc[:pd.Timestamp(end)], {"currencies": currencies}
 
 
-def add_to_comparison(cfg, color=None, order=None, saved_ref=None):
-    """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing."""
+def add_to_comparison(cfg, color=None, order=None, saved_ref=None, source=None):
+    """Add a normalized pie config to the comparison list. Bare tickers get their Yahoo listing.
+    source: the compared pie (its index) this one is a copy of, which doesn't count as a duplicate."""
     others = st.session_state.compare
     if len(others) >= MAX_COMPARED - 1:
         flash("warning", f"'{md(cfg.get('name') or 'Pie')}' wasn't kept: you can compare up to {MAX_COMPARED} "
@@ -485,7 +486,7 @@ def add_to_comparison(cfg, color=None, order=None, saved_ref=None):
         weights[t] = weights.get(t, 0.0) + float(a["weight"])
         names.setdefault(t, name)
     weights = {t: w for t, w in weights.items() if w > 0}
-    if same := next((e for e in others if e["weights"] == weights), None):
+    if same := next((e for i, e in enumerate(others) if e["weights"] == weights and i != source), None):
         flash("toast", f"This pie is already in the comparison as '{md(same['name'])}'.")
         return
     taken = {e["name"] for e in others}
@@ -1279,7 +1280,8 @@ def pie_card(k):
             if st.button("Copy", key=f"copy_{k}", disabled=k == "own" and not own_complete,
                          help="Adds a copy to the comparison, so you can change it and compare the two"):
                 add_to_comparison({"name": f"{plain_name(name)} (copy)",
-                                   "assets": [{"ticker": t, "weight": w, "name": n} for t, n, w in rows]})
+                                   "assets": [{"ticker": t, "weight": w, "name": n} for t, n, w in rows]},
+                                  source=None if k == "own" else int(k))
                 st.rerun()
             if st.button("Remove", key=f"remove_{k}"):
                 undo = {"label": f"Removed '{plain_name(name)}'.", "kind": "remove", "data": snapshot()}
