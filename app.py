@@ -60,11 +60,19 @@ def pie_changed():
     st.session_state.editor_version += 1
 
 
+SETTING_WORDS = {  # how a pie's own settings are named in the note when it joins a comparison
+    "base_ccy": str, "rebalance": lambda v: f"rebalance {v.lower()}", "start": lambda v: f"start {v}",
+    "end": lambda v: f"end {v}", "initial": lambda v: f"{v:g} initial", "monthly": lambda v: f"{v:g}/month",
+    "before_listing": lambda v: engine.BEFORE_LISTING[v].lower(),
+}
+
+
 def load_pie(cfg):
-    """Replace the pie and the sidebar settings with a normalized pie config.
+    """Replace the pie with a normalized pie config, and the sidebar settings with its own.
 
     The pie being replaced moves to the comparison (if it's complete and not the same pie),
-    so loading several pies one after another compares them; ✕ removes one.
+    so loading several pies one after another compares them; ✕ removes one. All compared pies
+    share the sidebar settings, so a pie added to a comparison keeps the current ones.
     """
     st.session_state.clear_saved_pick = True  # the saved-pies list stops showing the previous pick
     previous = {a["Ticker"]: float(a["Weight %"] or 0) for a in st.session_state.pie if float(a["Weight %"] or 0) > 0}
@@ -98,7 +106,14 @@ def load_pie(cfg):
                 pending["end"] = date.today()
             continue
         pending[key] = min(d, date.today())
-    st.session_state.pending_settings = pending
+    if st.session_state.compare:
+        # joining a comparison: keep the settings every compared pie uses, and say what this one had
+        saved_with = [SETTING_WORDS[k](v) for k, v in pending.items() if st.session_state.get(k) != v]
+        if saved_with:
+            flash("toast", f"Kept your settings. '{st.session_state.pie_name}' was saved with "
+                           f"{', '.join(saved_with)}.")
+    else:
+        st.session_state.pending_settings = pending
     pie_changed()
 
 

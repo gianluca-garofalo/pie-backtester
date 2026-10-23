@@ -62,7 +62,7 @@ def test_a_pie_with_later_assets_starts_later(app):
                    {"All-World ETF (editing)": "2019-07-29", "Tech Leaders": "2015-12-03"})
     expect(app.page.get_by_text("'Tech Leaders' starts on 2015-12-03")).to_be_visible()
     # All-World lists later than Tech Leaders, so it starts with Tech Leaders' value on that day
-    expect(app.page.get_by_text("'All-World ETF (editing)' starts on 2019-07-29 (VWCE.DE has no earlier prices) with €")).to_be_visible()
+    expect(app.page.get_by_text("'All-World ETF (editing)' starts on 2019-07-29 (VWCE.DE has no earlier prices) with $")).to_be_visible()
     expect(app.page.get_by_text("Every pie had")).to_be_visible()  # the same amount put in
 
 
@@ -83,3 +83,12 @@ def test_loading_a_compared_pie_opens_it_instead_of_duplicating(app):
     app.load_example("60/40 Stocks & Bonds")
     app.load_example("All-World ETF")
     assert app.chips() == ["All-World ETF (editing)", "60/40 Stocks & Bonds"]
+
+
+def test_a_pie_added_to_a_comparison_keeps_the_settings(app):
+    app.load_example("All-World ETF")  # EUR, never rebalanced
+    app.load_example("Tech Leaders")  # saved with USD and quarterly rebalancing
+    expect(app.page.get_by_text("Kept your settings. 'Tech Leaders' was saved with USD")).to_be_visible()
+    expect(app.page.get_by_role("combobox", name="Currency")).to_have_value("EUR")
+    expect(app.page.get_by_role("radiogroup", name="Rebalance to target")
+           .get_by_role("radio", checked=True)).to_have_text("Never")
