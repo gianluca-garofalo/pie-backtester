@@ -22,13 +22,14 @@ Open http://localhost:8501 in your browser.
 
 ## How to Use
 
-1. **Load or Create a Pie**: Pick an example under **Examples** at the top, load a saved pie or a `.json` file from the sidebar, or search by ISIN, ticker or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`) to add assets.
-2. **Set Target Weights**: The live total shows how much is left. Use "Split evenly" or "Scale to 100%".
-3. **Configure Simulation**: In the sidebar, set currency, initial amount, monthly contributions, and rebalancing rule.
-4. **See the Results**: Once the weights add up to 100%, the backtest runs by itself: performance charts, drawdowns, CAGR and the holdings breakdown.
-5. **Check the maths**: the "How it's calculated" tab lists every formula ([docs/how-its-calculated.md](docs/how-its-calculated.md)).
-6. **Compare**: Load another pie, and the previous one stays on the charts as a coloured chip. Click a chip to edit that pie, ✕ to remove it, and "Compare a copy" to compare versions of your own pie.
-7. **Share or Save**: Use **Share** (a link with the pie and its settings) or **Save** at the top.
+1. **Load or Create a Pie**: Pick an example under **Examples** at the top, open a saved pie or a `.json` file from **My pies**, or click **New pie** and search by ISIN, ticker or name (e.g. `VWCE.DE`, `EUNA.DE`, `AAPL`).
+2. **Edit it**: **Edit** on a pie's card opens the editor. The live total shows how much is left; "Split evenly" and "Scale to 100%" leave locked rows alone, and "Paste a list" takes rows copied from a spreadsheet. Nothing changes on the page until **Apply**.
+3. **Pick the period and the plan**: The period bar at the top (1Y to Max, or your own dates) is the only place time is set. **Edit plan** sets the currency, initial amount, monthly deposit and rebalancing.
+4. **See the Results**: Each pie gets a card with its value, gain on money put in, return, yearly growth and worst fall. The Growth, By asset and Holdings tabs follow below; zooming a chart is only for looking closer.
+5. **Assets that list later**: When an asset has no prices yet at the start, a card under the dates says so and lets you choose: start every pie on the same later day (the default, so they can be ranked), each pie from its own first price, or hold cash until the asset lists.
+6. **Check the maths**: the "How it's calculated" tab lists every formula ([docs/how-its-calculated.md](docs/how-its-calculated.md)).
+7. **Compare**: Load another pie, and both show side by side, each in its own colour. **Copy** compares a version of a pie; **Remove** takes one away, with **Undo**.
+8. **Share or Save**: Use **Share** (a link with the open pie and its settings) or **Save** at the top.
 
 ## Google sign-in and cloud storage (optional)
 

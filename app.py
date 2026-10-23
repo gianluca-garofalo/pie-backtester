@@ -1375,7 +1375,9 @@ def result_card(k):
 def card_css():
     """Each card's colour: a top border and a dot before its name."""
     rules = "".join(
-        f".st-key-pie_card_{k},.st-key-result_{k}{{border-top:4px solid {pie_colors[card_name[k]]} !important}}"
+        # on a phone the results are inside the pie's card, which already has the border
+        f".st-key-pie_card_{k}{'' if phone else f',.st-key-result_{k}'}"
+        f"{{border-top:4px solid {pie_colors[card_name[k]]} !important}}"
         f".st-key-pie_card_{k} .card-name::before,.st-key-result_{k} .card-name::before"
         f"{{content:'●';content:'●' / '';color:{pie_colors[card_name[k]]};margin-right:6px}}"
         for k in card_keys)
@@ -1488,8 +1490,8 @@ if results:
                                text=f"<b>{html.escape(label)}</b> {money(value, base_ccy, True)}", font=dict(color=color, size=12))
         fig.update_yaxes(type="log" if scale == "Log" else "linear", range=[lo, hi], title=base_ccy, row=1, col=1)
         fig.update_yaxes(title="% below high", row=2, col=1)
-        fig.update_layout(height=560, hovermode="x unified", showlegend=phone, margin=dict(t=10, b=10, r=10 if phone else 190),
-                          legend=dict(orientation="h", y=-0.12, x=0, title=None))
+        fig.update_layout(height=560, hovermode="x unified", showlegend=phone, margin=dict(t=60 if phone else 10, b=10, r=10 if phone else 190),
+                          legend=dict(orientation="h", y=1.02, yanchor="bottom", x=0, title=None))  # above the chart
         screen_reader_text("Growth chart: " + "; ".join(
             f"{n.removesuffix(' (editing)')} ends at {money(v, base_ccy, True)}" for n, v, _ in ends
             if n != "You put in") + f"; you put in {money(invested.iloc[-1], base_ccy, True)}.")
@@ -1510,12 +1512,12 @@ if results:
                               legend=dict(orientation="h", y=-0.15) if on_phone() else {})
             screen_reader_text("Value of each asset now: " + "; ".join(
                 f"{n}: {money(v, ccy, True)}" for n, v in vals.iloc[-1].items()) + ".")
-            st.plotly_chart(fig)
+            st.plotly_chart(fig, config={"displayModeBar": False} if phone else {})
             norm = engine.rebase(res["prices"]).rename(columns=names)
             fig2 = px.line(norm, color_discrete_sequence=PALETTE, title="Each asset, rebased to 100")
             fig2.update_layout(height=380, hovermode="x unified", legend_title="", yaxis_title="",
                                legend=dict(orientation="h", y=-0.2) if on_phone() else {})
-            st.plotly_chart(fig2)
+            st.plotly_chart(fig2, config={"displayModeBar": False} if phone else {})
         with tabs["Holdings"]:
             table = engine.per_asset_table(res, weights, names)
             st.dataframe(table, hide_index=True, width="stretch",
